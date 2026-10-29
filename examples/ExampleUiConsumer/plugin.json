@@ -1,0 +1,5 @@
+{
+  "name": "example-ui-consumer", "version": "1.0.0", "kind": "gamemode",
+  "displayName": "Example UI Consumer", "description": "Independent UI Core widget and authorized menu action example",
+  "main": "index.cjs", "optional": true
+}

@@ -1,0 +1,21 @@
+{
+  "edit": "UI bearbeiten",
+  "hint": "Element ziehen · Ecke zum Skalieren · Pfeiltasten für Feinkorrektur",
+  "selectElement": "Element auswählen",
+  "elementScale": "Elementgröße",
+  "globalScale": "Gesamte UI",
+  "save": "Speichern & schließen",
+  "cancel": "Abbrechen",
+  "reset": "Alles zurücksetzen",
+  "resetElement": "Element zurücksetzen",
+  "move": "Verschieben",
+  "resize": "Größe ändern",
+  "noElements": "Noch keine HUD-Elemente vom Server empfangen.",
+  "selection": "Ausgewähltes Element",
+  "localOnly": "Dieses Layout wird nur auf diesem Client gespeichert.",
+  "emptySelection": "Klicke auf ein HUD-Element oder wähle es hier aus.",
+  "hidden": "Ausgeblendet",
+  "notSaved": "Speichern nicht möglich. Das Layout gilt für diese Sitzung.",
+  "saved": "Layout gespeichert",
+  "keyboard": "Pfeile: 1 px · Umschalt: 10 px · + / −: Größe · Esc: Abbrechen"
+}

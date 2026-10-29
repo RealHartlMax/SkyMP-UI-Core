@@ -1,0 +1,637 @@
+diff --git a/README-plugins.md b/README-plugins.md
+index b18ad98..1aead4a 100644
+--- a/README-plugins.md
++++ b/README-plugins.md
+@@ -457,3 +457,28 @@ Absenderzuordnung und Zustandsführung vereinheitlicht werden.
+ Aktuelle Paketformate, Konfiguration und Grenzen stehen in der
+ [Voice-API-Referenz](docs/docs_voice_api.md). Offene Arbeit steht im
+ [Voice-Backlog](ROADMAP.md#voice--proximity-chat-sync-backlog-proposed).
++
++## Plugin-Ladereihenfolge im Dashboard
++
++Unter **Ressourcen → Server-Plugins** zeigen Positionsnummern die Reihenfolge fuer
++den naechsten Gameserver-Start. Mit den Pfeilen nach oben/unten verschieben und
++**Ladereihenfolge speichern** waehlen. Aktivierung bleibt eine getrennte Einstellung.
++Ungespeicherte Aenderungen koennen verworfen werden. Suchfilter entfernen keine
++Plugins aus der gespeicherten Liste. Gleichzeitige Aenderungen werden mit einem
++Konflikthinweis abgewiesen.
++
++Die Auswahl wird als Plugin-IDs in pluginsLoadOrder der server-settings.json
++gespeichert; private Einstellungen, Mod-Reihenfolge und Discovery-State bleiben
++erhalten. Dienste muessen vor ihren Verbrauchern stehen, beispielsweise
++skymp-ui-core vor example-ui-consumer und second-ui-consumer. Ohne explizite
++Reihenfolge greift weiterhin die alphabetische Sortierung des bestehenden Loaders.
++Nicht aufgefuehrte neue Plugins folgen alphabetisch. Bereits konfigurierte,
++voruebergehend fehlende Plugin-IDs bleiben erhalten. Keine automatische
++Abhaengigkeitsaufloesung und kein einzelner Plugin-Hot-Reload.
++
++GET /api/admin/plugins/load-order liefert Reihenfolge und Revision (canViewLogs).
++PUT mit {revision, pluginsLoadOrder} speichert die vollstaendige Liste (canConsole).
++Veraltete Revision: 409; ungueltige/unvollstaendige Liste: 400. Aenderungen gelten
++ab dem naechsten Gameserver-Start. Fuer die Installation dieses neuen Dashboard-/
++Backend-Builds einmal den Starter/Dashboarddienst neu starten; beim spaeteren
++Umordnen genuegt ein Gameserver-Neustart.
+diff --git a/skymp5-front/src/features/adminDashboard/PluginsPanel.tsx b/skymp5-front/src/features/adminDashboard/PluginsPanel.tsx
+index a94da84..e728f55 100644
+--- a/skymp5-front/src/features/adminDashboard/PluginsPanel.tsx
++++ b/skymp5-front/src/features/adminDashboard/PluginsPanel.tsx
+@@ -4,14 +4,13 @@ import './plugins.scss';
+ 
+ type RuntimeState = 'starting' | 'running' | 'failed' | 'stopped';
+ type DiscoveryMode = 'safe' | 'prompt' | 'auto';
+-type PendingWrite = { kind: 'plugin'; name: string } | { kind: 'all' } | { kind: 'mode' };
++type PendingWrite = { kind: 'plugin'; name: string } | { kind: 'all' } | { kind: 'mode' } | { kind: 'order' };
++interface OrderSnapshot { ok: true; revision: string; pluginsLoadOrder: string[]; order: string[] }
++const validNames = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 512 && value.every(name => typeof name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(name)) && new Set(value).size === value.length;
++const isOrder = (value: any): value is OrderSnapshot => value?.ok === true && /^[a-f0-9]{64}$/.test(value.revision) && validNames(value.order) && validNames(value.pluginsLoadOrder);
+ const isMode = (value: unknown): value is DiscoveryMode => ['safe', 'prompt', 'auto'].includes(value as string);
+ interface ServerPlugin {
+-  name: string;
+-  pluginPath: string;
+-  version: string;
+-  startupEnabled: boolean;
+-  manifestPresent: boolean;
++  name: string; pluginPath: string; version: string; startupEnabled: boolean; manifestPresent: boolean;
+   runtimeStatus: { status: RuntimeState; pid?: number; message?: string } | null;
+ }
+ 
+@@ -19,152 +18,128 @@ export function PluginsPanel({ canView, canEdit, active = true }: { canView: boo
+   const { t } = useTranslation();
+   const text = (key: string, options?: Record<string, unknown>) => t(`adminDashboard.plugins.${key}`, options);
+   const [plugins, setPlugins] = useState<ServerPlugin[] | null>(null);
+-  const [loading, setLoading] = useState(true);
+-  const [loadFailed, setLoadFailed] = useState(false);
+-  const [refresh, setRefresh] = useState(0);
+-  const [saving, setSaving] = useState<PendingWrite | null>(null);
+-  const [mode, setMode] = useState<DiscoveryMode | null>(null);
+-  const [notice, setNotice] = useState<'saved' | 'allSaved' | 'modeSaved' | 'saveFailed' | 'forbidden' | null>(null);
+-  const [enabledCount, setEnabledCount] = useState(0);
+-  const [search, setSearch] = useState('');
+-  const mutation = useRef<AbortController | null>(null);
++  const [loading, setLoading] = useState(true), [loadFailed, setLoadFailed] = useState(false), [refresh, setRefresh] = useState(0);
++  const [saving, setSaving] = useState<PendingWrite | null>(null), [mode, setMode] = useState<DiscoveryMode | null>(null);
++  const [snapshot, setSnapshot] = useState<OrderSnapshot | null>(null), [order, setOrder] = useState<string[]>([]);
++  const [notice, setNotice] = useState<'saved' | 'allSaved' | 'modeSaved' | 'orderSaved' | 'orderStale' | 'saveFailed' | 'forbidden' | null>(null);
++  const [enabledCount, setEnabledCount] = useState(0), [search, setSearch] = useState('');
++  const mutation = useRef<AbortController | null>(null), panel = useRef<HTMLElement | null>(null);
++  const dirty = Boolean(snapshot && JSON.stringify(order) !== JSON.stringify(snapshot.order));
+ 
+   useEffect(() => () => { mutation.current?.abort(); mutation.current = null; }, []);
+   useEffect(() => {
+-    if (!active || !canView || saving) return;
+-    let closed = false;
+-    let pending = false;
++    if (!active || !canView || saving || dirty) return;
++    let closed = false, pending = false;
+     let controller: AbortController | undefined;
+     const load = async () => {
+       if (pending) return;
+-      pending = true;
+-      controller = new AbortController();
++      pending = true; controller = new AbortController();
+       const timeout = setTimeout(() => controller?.abort(), 10000);
+       try {
+         const options = { credentials: 'same-origin' as const, cache: 'no-store' as const, signal: controller.signal };
+-        const [response, policyResponse] = await Promise.all([
+-          fetch('/api/admin/plugins', options), fetch('/api/admin/plugins/settings', options),
++        const [response, policyResponse, orderResponse] = await Promise.all([
++          fetch('/api/admin/plugins', options), fetch('/api/admin/plugins/settings', options), fetch('/api/admin/plugins/load-order', options),
+         ]);
+         if (!response.ok) throw Error();
+-        const data: ServerPlugin[] = await response.json();
+-        if (!Array.isArray(data)) throw Error();
++        const data: ServerPlugin[] = await response.json(); if (!Array.isArray(data)) throw Error();
+         const policy = policyResponse.ok ? await policyResponse.json() : null;
++        const loadOrder = orderResponse.ok ? await orderResponse.json() : null;
+         if (!closed) {
+-          setPlugins(data.slice().sort((a, b) => a.name.localeCompare(b.name)));
+-          setMode(isMode(policy?.mode) ? policy.mode : null);
++          setPlugins(data); setMode(isMode(policy?.mode) ? policy.mode : null);
++          setSnapshot(isOrder(loadOrder) ? loadOrder : null); setOrder(isOrder(loadOrder) ? loadOrder.order : []);
+           setLoadFailed(false);
+         }
+-      } catch {
+-        if (!closed) setLoadFailed(true);
+-      } finally {
+-        clearTimeout(timeout);
+-        pending = false;
+-        if (!closed) setLoading(false);
+-      }
++      } catch { if (!closed) setLoadFailed(true); }
++      finally { clearTimeout(timeout); pending = false; if (!closed) setLoading(false); }
+     };
+-    void load();
+-    const interval = setInterval(() => void load(), 5000);
++    void load(); const interval = setInterval(() => void load(), 5000);
+     return () => { closed = true; controller?.abort(); clearInterval(interval); };
+-  }, [active, canView, saving, refresh]);
++  }, [active, canView, saving, refresh, dirty]);
+ 
+   async function write(pending: PendingWrite, url: string, method: 'PATCH' | 'POST' | 'PUT', body: unknown) {
+     if (!canEdit || saving || loading) return;
+-    const controller = new AbortController();
+-    mutation.current = controller;
+-    setSaving(pending);
+-    setNotice(null);
++    const controller = new AbortController(); mutation.current = controller; setSaving(pending); setNotice(null);
+     const timeout = setTimeout(() => controller.abort(), 10000);
+     try {
+-      const response = await fetch(url, {
+-        method, credentials: 'same-origin', signal: controller.signal,
+-        headers: { 'Content-Type': 'application/json' },
+-        body: JSON.stringify(body),
+-      });
+-      if (!response.ok) {
+-        setNotice(response.status === 403 ? 'forbidden' : 'saveFailed');
+-        return;
+-      }
+-      const data = await response.json();
+-      if (data.ok !== true) throw Error();
+-      if (mutation.current !== controller) return;
++      const response = await fetch(url, { method, credentials: 'same-origin', signal: controller.signal,
++        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
++      if (!response.ok) { setNotice(response.status === 403 ? 'forbidden' : response.status === 409 && pending.kind === 'order' ? 'orderStale' : 'saveFailed'); return; }
++      const data = await response.json(); if (data.ok !== true) throw Error(); if (mutation.current !== controller) return;
+       if (pending.kind === 'plugin') {
+         if (typeof data.startupEnabled !== 'boolean') throw Error();
+-        setPlugins(previous => previous?.map(entry => entry.name === pending.name
+-          ? { ...entry, startupEnabled: data.startupEnabled } : entry) || null);
+-        setNotice('saved');
++        setPlugins(previous => previous?.map(entry => entry.name === pending.name ? { ...entry, startupEnabled: data.startupEnabled } : entry) || null); setNotice('saved');
+       } else if (pending.kind === 'all') {
+-        if (!Array.isArray(data.names) || typeof data.count !== 'number') throw Error();
+-        const enabled = new Set(data.names);
+-        setPlugins(previous => previous?.map(entry => enabled.has(entry.name)
+-          ? { ...entry, startupEnabled: true } : entry) || null);
+-        setEnabledCount(data.count);
+-        setNotice('allSaved');
+-      } else {
+-        if (!isMode(data.mode)) throw Error();
+-        setMode(data.mode);
+-        setNotice('modeSaved');
+-      }
+-    } catch {
+-      if (mutation.current === controller) setNotice('saveFailed');
+-    } finally {
+-      clearTimeout(timeout);
+-      if (mutation.current === controller) { mutation.current = null; setSaving(null); }
+-    }
++        if (!Array.isArray(data.names) || typeof data.count !== 'number') throw Error(); const enabled = new Set(data.names);
++        setPlugins(previous => previous?.map(entry => enabled.has(entry.name) ? { ...entry, startupEnabled: true } : entry) || null);
++        setEnabledCount(data.count); setNotice('allSaved');
++      } else if (pending.kind === 'order') {
++        if (!isOrder(data)) throw Error(); setSnapshot(data); setOrder(data.order); setNotice('orderSaved');
++      } else { if (!isMode(data.mode)) throw Error(); setMode(data.mode); setNotice('modeSaved'); }
++    } catch { if (mutation.current === controller) setNotice('saveFailed'); }
++    finally { clearTimeout(timeout); if (mutation.current === controller) { mutation.current = null; setSaving(null); } }
+   }
+-
+-  const matches = (plugins || []).filter(plugin =>
+-    `${plugin.name} ${plugin.pluginPath}`.toLowerCase().includes(search.trim().toLowerCase()));
+-  const disabledCount = (plugins || []).filter(plugin => !plugin.startupEnabled && plugin.manifestPresent).length;
+   const busy = loading || Boolean(saving);
+-  return <section className="server-plugins" data-testid="server-plugins" aria-labelledby="server-plugins-title">
+-    <header>
+-      <div><h2 id="server-plugins-title">{text('title')}</h2><p>{text('intro')}</p></div>
++  const move = (index: number, delta: number) => {
++    if (!canEdit || busy || index + delta < 0 || index + delta >= order.length) return;
++    const name = order[index]; setOrder(previous => { const next = [...previous]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; return next; });
++    requestAnimationFrame(() => {
++      const row = panel.current?.querySelector<HTMLElement>(`[data-plugin="${CSS.escape(name)}"]`);
++      const preferred = row?.querySelector<HTMLButtonElement>(`[data-order-move="${delta}"]:not(:disabled)`);
++      (preferred || row?.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
++    });
++  };
++  const byName = new Map((plugins || []).map(plugin => [plugin.name, plugin]));
++  const ordered = (snapshot ? order : [...byName.keys()].sort((a, b) => a.localeCompare(b))).map(name => byName.get(name) || {
++    name, pluginPath: '—', version: '—', startupEnabled: false, manifestPresent: false, runtimeStatus: null,
++  });
++  const matches = ordered.filter(plugin => `${plugin.name} ${plugin.pluginPath}`.toLowerCase().includes(search.trim().toLowerCase()));
++  const disabledCount = (plugins || []).filter(plugin => !plugin.startupEnabled && plugin.manifestPresent).length;
++  return <section className="server-plugins" data-testid="server-plugins" aria-labelledby="server-plugins-title" ref={panel}>
++    <header><div><h2 id="server-plugins-title">{text('title')}</h2><p>{text('intro')}</p></div>
+       <div className="server-plugins__actions">
+-        <button type="button" className="server-plugins__enable-all" disabled={!canView || !canEdit || busy || disabledCount === 0}
++        <button type="button" className="server-plugins__enable-all" disabled={!canView || !canEdit || busy || dirty || disabledCount === 0}
+           onClick={() => void write({ kind: 'all' }, '/api/admin/plugins/enable-all', 'POST', {})}>{text('enableAll', { count: disabledCount })}</button>
+-        <button type="button" disabled={!canView || busy} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>{text('refresh')}</button>
++        <button type="button" disabled={!canView || busy || dirty} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>{text('refresh')}</button>
+       </div>
+     </header>
+     {!canView ? <p>{text('noPermission')}</p> : <>
+-      <p className="server-plugins__hint">{text('discoveryHint')} <code>Plugins/&lt;Name&gt;/plugin.json</code></p>
+-      <p>{text('restartHint')}</p>
+-      {mode ? <label className="server-plugins__policy">{text('newPlugins')}
+-        <select value={mode} disabled={!canEdit || busy}
+-          onChange={event => void write({ kind: 'mode' }, '/api/admin/plugins/settings', 'PUT', { mode: event.target.value })}>
+-          <option value="safe">{text('modeSafe')}</option><option value="auto">{text('modeAuto')}</option><option value="prompt">{text('modePrompt')}</option>
+-        </select><small>{text('modeHint')}</small>
+-      </label> : plugins && <p role="alert">{text('modeUnavailable')}</p>}
++      <p className="server-plugins__hint">{text('discoveryHint')} <code>Plugins/&lt;Name&gt;/plugin.json</code></p><p>{text('restartHint')}</p>
++      {mode ? <label className="server-plugins__policy">{text('newPlugins')}<select value={mode} disabled={!canEdit || busy || dirty}
++        onChange={event => void write({ kind: 'mode' }, '/api/admin/plugins/settings', 'PUT', { mode: event.target.value })}>
++        <option value="safe">{text('modeSafe')}</option><option value="auto">{text('modeAuto')}</option><option value="prompt">{text('modePrompt')}</option>
++      </select><small>{text('modeHint')}</small></label> : plugins && <p role="alert">{text('modeUnavailable')}</p>}
+       {!canEdit && <p>{text('readOnly')}</p>}
+-      {notice && <p className="server-plugins__notice" role={notice === 'saveFailed' || notice === 'forbidden' ? 'alert' : 'status'}>{text(notice, { count: enabledCount })}</p>}
++      {notice && <p className="server-plugins__notice" role={['saveFailed', 'forbidden', 'orderStale'].includes(notice) ? 'alert' : 'status'}>{text(notice, { count: enabledCount })}</p>}
+       {loadFailed && <p className="server-plugins__notice" role="alert">{text('loadFailed')}</p>}
+       {loading && !plugins && <p role="status">{text('loading')}</p>}
+       {plugins && <>
++        <h3>{text('orderTitle')}</h3><p>{text('orderHint')}</p>
++        {!snapshot && <p role="alert">{text('orderUnavailable')}</p>}
+         <label className="server-plugins__search">{text('search')}<input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label>
+-        {plugins.length === 0 ? <p>{text('empty')}</p> : matches.length === 0 ? <p>{text('noMatches')}</p> :
+-          <ul className="server-plugins__list">{matches.map(plugin => {
+-            const runtime = plugin.runtimeStatus;
++        {ordered.length === 0 ? <p>{text('empty')}</p> : matches.length === 0 ? <p>{text('noMatches')}</p> :
++          <ol className="server-plugins__list">{matches.map(plugin => {
++            const runtime = plugin.runtimeStatus, index = order.indexOf(plugin.name);
+             return <li key={plugin.name} className="server-plugins__entry" data-plugin={plugin.name}>
+-              <div className="server-plugins__details">
+-                <h3>{plugin.name} <span>{text('version', { version: plugin.version })}</span></h3>
+-                <code>{plugin.pluginPath}</code>
+-                {!plugin.manifestPresent && <p className="server-plugins__error">{text('missingManifest')}</p>}
+-                {runtime?.message && <p className="server-plugins__message">{runtime.message}</p>}
+-              </div>
+-              <div className="server-plugins__state">
+-                <span>{text('runtime')}</span>
+-                <strong className={`server-plugins__badge server-plugins__badge--${runtime?.status || 'unknown'}`}>{text(runtime?.status || 'unknown')}</strong>
+-                {runtime?.pid && <small>PID {runtime.pid}</small>}
++              {snapshot && <div className="server-plugins__moves"><strong aria-label={text('orderPosition', { position: index + 1 })}>{index + 1}</strong>
++                <button type="button" data-order-move="-1" disabled={!canEdit || busy || index === 0} aria-label={`${text('orderUp')}: ${plugin.name}`} onClick={() => move(index, -1)}>↑</button>
++                <button type="button" data-order-move="1" disabled={!canEdit || busy || index === order.length - 1} aria-label={`${text('orderDown')}: ${plugin.name}`} onClick={() => move(index, 1)}>↓</button>
++              </div>}
++              <div className="server-plugins__details"><h3>{plugin.name} <span>{text('version', { version: plugin.version })}</span></h3><code>{plugin.pluginPath}</code>
++                {!plugin.manifestPresent && <p className="server-plugins__error">{text('missingManifest')}</p>}{runtime?.message && <p className="server-plugins__message">{runtime.message}</p>}
+               </div>
+-              <div className="server-plugins__startup">
+-                <span>{text('startup')}<small>{text(plugin.startupEnabled ? 'enabled' : 'disabled')}</small></span>
+-                <button type="button" disabled={!canEdit || busy || (!plugin.manifestPresent && !plugin.startupEnabled)}
++              <div className="server-plugins__state"><span>{text('runtime')}</span><strong className={`server-plugins__badge server-plugins__badge--${runtime?.status || 'unknown'}`}>{text(runtime?.status || 'unknown')}</strong>{runtime?.pid && <small>PID {runtime.pid}</small>}</div>
++              <div className="server-plugins__startup"><span>{text('startup')}<small>{text(plugin.startupEnabled ? 'enabled' : 'disabled')}</small></span>
++                <button type="button" disabled={!canEdit || busy || dirty || (!plugin.manifestPresent && !plugin.startupEnabled)}
+                   onClick={() => void write({ kind: 'plugin', name: plugin.name }, `/api/admin/plugins/${encodeURIComponent(plugin.name)}`, 'PATCH', { startupEnabled: !plugin.startupEnabled })}
+-                  aria-label={`${text(plugin.startupEnabled ? 'disable' : 'enable')}: ${plugin.name}`}>
+-                  {saving?.kind === 'plugin' && saving.name === plugin.name ? text('saving') : text(plugin.startupEnabled ? 'disable' : 'enable')}
+-                </button>
++                  aria-label={`${text(plugin.startupEnabled ? 'disable' : 'enable')}: ${plugin.name}`}>{saving?.kind === 'plugin' && saving.name === plugin.name ? text('saving') : text(plugin.startupEnabled ? 'disable' : 'enable')}</button>
+               </div>
+             </li>;
+-          })}</ul>}
++          })}</ol>}
++        {snapshot && <footer className="server-plugins__order-actions">
++          <button type="button" className="server-plugins__enable-all" disabled={!canEdit || busy || !dirty} onClick={() => void write({ kind: 'order' }, '/api/admin/plugins/load-order', 'PUT', { revision: snapshot.revision, pluginsLoadOrder: order })}>{text('orderSave')}</button>
++          <button type="button" disabled={busy || !dirty} onClick={() => { setOrder(snapshot.order); setNotice(null); setRefresh(value => value + 1); }}>{text('orderDiscard')}</button>
++          {dirty && <span role="status">{text('orderChanged')}</span>}
++        </footer>}
+       </>}
+     </>}
+   </section>;
+diff --git a/skymp5-front/src/features/adminDashboard/plugins.scss b/skymp5-front/src/features/adminDashboard/plugins.scss
+index 7b745a2..09baaf2 100644
+--- a/skymp5-front/src/features/adminDashboard/plugins.scss
++++ b/skymp5-front/src/features/adminDashboard/plugins.scss
+@@ -29,3 +29,9 @@
+   &__message { white-space: pre-wrap; font-size: 12px; }
+ }
+ @media (max-width: 600px) { .server-plugins { padding: 16px; &__entry { padding: 14px; gap: 14px; } &__actions > button { width: 100%; } } }
++
++.server-plugins__moves { display: grid; grid-template-columns: repeat(2, 36px); gap: 5px; align-items: center; justify-items: stretch; }
++.server-plugins__moves > strong { grid-column: 1 / -1; text-align: center; color: #d8c39c; font-variant-numeric: tabular-nums; }
++.server-plugins__moves > button { padding: 5px; min-height: 36px; font-size: 20px; }
++.server-plugins__order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
++.server-plugins__order-actions > span { color: #e8d3a4; }
+diff --git a/skymp5-front/src/locales/de.json b/skymp5-front/src/locales/de.json
+index 59c30c1..673119e 100644
+--- a/skymp5-front/src/locales/de.json
++++ b/skymp5-front/src/locales/de.json
+@@ -93,7 +93,18 @@
+       "running": "Geladen / läuft",
+       "failed": "Fehler",
+       "stopped": "Gestoppt",
+-      "unknown": "Keine Laufzeitmeldung"
++      "unknown": "Keine Laufzeitmeldung",
++      "orderTitle": "Plugin-Ladereihenfolge",
++      "orderHint": "Dienste wie UI Core vor den Plugins laden, die sie benötigen. Die Reihenfolge gilt ab dem nächsten Gameserver-Start.",
++      "orderSave": "Ladereihenfolge speichern",
++      "orderDiscard": "Änderungen verwerfen",
++      "orderChanged": "Ungespeicherte Ladereihenfolge.",
++      "orderSaved": "Reihenfolge gespeichert. Gameserver neu starten, um sie anzuwenden.",
++      "orderStale": "Reihenfolge oder Pluginliste wurde inzwischen geändert. Änderungen verwerfen, neu laden und erneut speichern.",
++      "orderUnavailable": "Ladereihenfolge nicht verfügbar. Dashboard/Serverpaket aktualisieren oder die gespeicherte Konfiguration prüfen.",
++      "orderUp": "Nach oben",
++      "orderDown": "Nach unten",
++      "orderPosition": "Position {{position}}"
+     },
+     "close": "Schließen",
+     "profileTitle": "Spielerprofil",
+diff --git a/skymp5-front/src/locales/en.json b/skymp5-front/src/locales/en.json
+index c21c338..39367e5 100644
+--- a/skymp5-front/src/locales/en.json
++++ b/skymp5-front/src/locales/en.json
+@@ -93,7 +93,18 @@
+       "running": "Loaded / running",
+       "failed": "Failed",
+       "stopped": "Stopped",
+-      "unknown": "No runtime report"
++      "unknown": "No runtime report",
++      "orderTitle": "Plugin load order",
++      "orderHint": "Load services such as UI Core before plugins that use them. The order takes effect at the next game-server start.",
++      "orderSave": "Save load order",
++      "orderDiscard": "Discard changes",
++      "orderChanged": "Unsaved load order.",
++      "orderSaved": "Order saved. Restart the game server to apply it.",
++      "orderStale": "The order or plugin list changed. Discard changes, refresh and save again.",
++      "orderUnavailable": "Load order unavailable. Update the dashboard/server package or check the saved settings.",
++      "orderUp": "Move up",
++      "orderDown": "Move down",
++      "orderPosition": "Position {{position}}"
+     },
+     "close": "Close",
+     "profileTitle": "Player profile",
+diff --git a/skymp5-front/src/locales/es.json b/skymp5-front/src/locales/es.json
+index 31fc6e2..1b0b873 100644
+--- a/skymp5-front/src/locales/es.json
++++ b/skymp5-front/src/locales/es.json
+@@ -93,7 +93,18 @@
+       "running": "Cargado / en ejecución",
+       "failed": "Error",
+       "stopped": "Detenido",
+-      "unknown": "Sin informe de ejecución"
++      "unknown": "Sin informe de ejecución",
++      "orderTitle": "Orden de carga de plugins",
++      "orderHint": "Carga servicios como UI Core antes de los plugins que los utilizan. Se aplica al próximo inicio del servidor de juego.",
++      "orderSave": "Guardar orden de carga",
++      "orderDiscard": "Descartar cambios",
++      "orderChanged": "Orden de carga sin guardar.",
++      "orderSaved": "Orden guardado. Reinicia el servidor de juego para aplicarlo.",
++      "orderStale": "El orden o la lista de plugins cambió. Descarta los cambios, actualiza y guarda de nuevo.",
++      "orderUnavailable": "Orden no disponible. Actualiza el panel/servidor o revisa la configuración.",
++      "orderUp": "Subir",
++      "orderDown": "Bajar",
++      "orderPosition": "Posición {{position}}"
+     },
+     "close": "Cerrar",
+     "profileTitle": "Perfil del jugador",
+diff --git a/skymp5-front/src/locales/fr.json b/skymp5-front/src/locales/fr.json
+index b1cea1d..dbaec20 100644
+--- a/skymp5-front/src/locales/fr.json
++++ b/skymp5-front/src/locales/fr.json
+@@ -93,7 +93,18 @@
+       "running": "Chargé / en cours",
+       "failed": "Erreur",
+       "stopped": "Arrêté",
+-      "unknown": "Aucun état reçu"
++      "unknown": "Aucun état reçu",
++      "orderTitle": "Ordre de chargement des plugins",
++      "orderHint": "Chargez les services comme UI Core avant les plugins qui les utilisent. Application au prochain démarrage du serveur de jeu.",
++      "orderSave": "Enregistrer l’ordre",
++      "orderDiscard": "Annuler les modifications",
++      "orderChanged": "Ordre non enregistré.",
++      "orderSaved": "Ordre enregistré. Redémarrez le serveur de jeu.",
++      "orderStale": "L’ordre ou la liste des plugins a changé. Annulez les modifications, actualisez puis enregistrez.",
++      "orderUnavailable": "Ordre indisponible. Mettez à jour le tableau de bord/serveur ou vérifiez la configuration.",
++      "orderUp": "Monter",
++      "orderDown": "Descendre",
++      "orderPosition": "Position {{position}}"
+     },
+     "close": "Fermer",
+     "profileTitle": "Profil du joueur",
+diff --git a/skymp5-front/src/locales/it.json b/skymp5-front/src/locales/it.json
+index 5905d25..000d15b 100644
+--- a/skymp5-front/src/locales/it.json
++++ b/skymp5-front/src/locales/it.json
+@@ -93,7 +93,18 @@
+       "running": "Caricato / in esecuzione",
+       "failed": "Errore",
+       "stopped": "Arrestato",
+-      "unknown": "Stato non disponibile"
++      "unknown": "Stato non disponibile",
++      "orderTitle": "Ordine di caricamento dei plugin",
++      "orderHint": "Carica servizi come UI Core prima dei plugin che li usano. Si applica al prossimo avvio del server di gioco.",
++      "orderSave": "Salva ordine",
++      "orderDiscard": "Annulla modifiche",
++      "orderChanged": "Ordine non salvato.",
++      "orderSaved": "Ordine salvato. Riavvia il server di gioco.",
++      "orderStale": "L’ordine o l’elenco dei plugin è cambiato. Annulla le modifiche, aggiorna e salva di nuovo.",
++      "orderUnavailable": "Ordine non disponibile. Aggiorna pannello/server o controlla la configurazione.",
++      "orderUp": "Sposta su",
++      "orderDown": "Sposta giù",
++      "orderPosition": "Posizione {{position}}"
+     },
+     "close": "Chiudi",
+     "profileTitle": "Profilo giocatore",
+diff --git a/skymp5-front/src/locales/ru.json b/skymp5-front/src/locales/ru.json
+index e10b361..7688863 100644
+--- a/skymp5-front/src/locales/ru.json
++++ b/skymp5-front/src/locales/ru.json
+@@ -93,7 +93,18 @@
+       "running": "Загружен / работает",
+       "failed": "Ошибка",
+       "stopped": "Остановлен",
+-      "unknown": "Нет данных о работе"
++      "unknown": "Нет данных о работе",
++      "orderTitle": "Порядок загрузки плагинов",
++      "orderHint": "Загружайте службы, например UI Core, до использующих их плагинов. Порядок применяется при следующем запуске игрового сервера.",
++      "orderSave": "Сохранить порядок",
++      "orderDiscard": "Отменить изменения",
++      "orderChanged": "Порядок не сохранён.",
++      "orderSaved": "Порядок сохранён. Перезапустите игровой сервер.",
++      "orderStale": "Порядок или список плагинов изменён. Отмените изменения, обновите список и сохраните снова.",
++      "orderUnavailable": "Порядок загрузки недоступен. Обновите панель/сервер или проверьте настройки.",
++      "orderUp": "Выше",
++      "orderDown": "Ниже",
++      "orderPosition": "Позиция {{position}}"
+     },
+     "close": "Закрыть",
+     "profileTitle": "Профиль игрока",
+diff --git a/skymp5-server/tests/pluginLoadOrder.integration.mjs b/skymp5-server/tests/pluginLoadOrder.integration.mjs
+new file mode 100644
+index 0000000..e9b05df
+--- /dev/null
++++ b/skymp5-server/tests/pluginLoadOrder.integration.mjs
+@@ -0,0 +1,88 @@
++// Real dashboard API, disposable settings and the actual game's boot sorter.
++import assert from 'node:assert/strict';
++import crypto from 'node:crypto';
++import fs from 'node:fs';
++import http from 'node:http';
++import os from 'node:os';
++import path from 'node:path';
++import { createRequire } from 'node:module';
++import { fileURLToPath } from 'node:url';
++const require = createRequire(import.meta.url), esbuild = require('../node_modules/esbuild'), ts = require('../node_modules/typescript');
++const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skymp-plugin-order-')), previous = process.cwd(), checks = [];
++let listener;
++try {
++  const bundle = path.join(dir, 'dashboard.cjs');
++  await esbuild.build({ stdin: { contents: "export {createApp, adminAuthParse} from './ts/ui';", resolveDir: serverRoot, loader: 'ts' }, outfile: bundle,
++    absWorkingDir: serverRoot, bundle: true, platform: 'node', target: 'es2022', logLevel: 'silent', alias: { '@opentelemetry/api': './ts/shims/opentelemetry-api.js' },
++    plugins: [{ name: 'test-router-exports', setup(build) { build.onLoad({ filter: /[\\/]ts[\\/]ui\.ts$/ }, args => ({ contents: fs.readFileSync(args.path, 'utf8') + '\nexport {createApp, adminAuthParse};', loader: 'ts' })); } }] });
++  esbuild.stop(); process.chdir(dir);
++  const api = require(bundle), ids = ['example-ui-consumer', 'second-ui-consumer', 'skymp-chat', 'skymp-ui-core'];
++  const config = { name: 'Load-order fixture', port: 7777, maxPlayers: 8, loadOrder: ['Skyrim.esm'], pluginsLoadOrder: [], dataDir: path.join(dir, 'data'),
++    offlineMode: true, adminApi: { enabled: true }, adminUiAuth: { user: 'owner', password: crypto.randomBytes(24).toString('hex') },
++    adminUiUsers: { owner: { role: 'admin' } }, masterKey: 'PRIVATE_ORDER_FIXTURE', pluginDiscovery: { mode: 'safe' } };
++  fs.mkdirSync(config.dataDir); fs.mkdirSync(path.join(dir, 'Plugins'));
++  const settingsFile = path.join(dir, 'server-settings.json'), stateFile = path.join(dir, 'Plugins/.discovery-state.json');
++  fs.writeFileSync(settingsFile, JSON.stringify(config));
++  const state = { version: 1, plugins: Object.fromEntries(ids.map(name => [name, { pluginPath: 'Plugins/' + name, fingerprint: 'fixture', version: '1.0.0', startupEnabled: name === 'skymp-ui-core', discoveredAt: '2026-10-28', updatedAt: '2026-10-28' }])) };
++  fs.writeFileSync(stateFile, JSON.stringify(state));
++  for (const name of ids) {
++    const plugin = path.join(dir, 'Plugins', name); fs.mkdirSync(plugin);
++    fs.writeFileSync(path.join(plugin, 'plugin.json'), JSON.stringify({ name, version: '1.0.0', kind: 'gamemode' }));
++    fs.writeFileSync(path.join(plugin, 'index.cjs'), "throw Error('Listing/reordering must never execute a plugin');");
++  }
++  const settings = { ...config, allSettings: config }; api.adminAuthParse(settings);
++  const app = api.createApp(settings, () => listener.address().port); listener = http.createServer(app.callback());
++  await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${listener.address().port}`;
++  const authorization = 'Basic ' + Buffer.from(`owner:${config.adminUiAuth.password}`).toString('base64');
++  const request = (init = {}) => fetch(base + '/api/admin/plugins/load-order', { ...init, headers: { authorization, ...init.headers } });
++  const put = (body, headers = {}) => ({ method: 'PUT', headers: { 'Content-Type': 'application/json', origin: base, ...headers }, body: JSON.stringify(body) });
++  let response = await request(); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
++  const initial = await response.json(); assert.deepEqual(initial.order, ids); assert.deepEqual(initial.pluginsLoadOrder, []);
++  assert(!JSON.stringify(initial).includes(config.masterKey)); checks.push('Empty preference exposes the actual alphabetical boot order without executing plugins or disclosing settings');
++  const order = ['skymp-ui-core', 'skymp-chat', 'example-ui-consumer', 'second-ui-consumer'];
++  const external = { ...config, externallyEdited: { keep: 'disk-value' } }; fs.writeFileSync(settingsFile, JSON.stringify(external));
++  const stateBefore = fs.readFileSync(stateFile, 'utf8');
++  response = await request(put({ revision: initial.revision, pluginsLoadOrder: order })); assert.equal(response.status, 200);
++  let saved = await response.json(); assert.equal(saved.restartRequired, true); assert.deepEqual(saved.order, order);
++  assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile)), { ...external, pluginsLoadOrder: order }); assert.equal(fs.readFileSync(stateFile, 'utf8'), stateBefore);
++  assert.deepEqual((await (await request()).json()).order, order);
++  checks.push('Order persists and reloads, preserving private/external settings, mod order, activation flags and discovery state');
++  const written = fs.readFileSync(settingsFile, 'utf8');
++  assert.equal((await request(put({ revision: initial.revision, pluginsLoadOrder: order.slice().reverse() }))).status, 409);
++  for (const invalid of [order.slice(1), [...order, 'unknown-plugin'], [...order.slice(1), order[1]], ['../escape', ...order.slice(1)], Array(513).fill('x'), null])
++    assert.equal((await request(put({ revision: saved.revision, pluginsLoadOrder: invalid }))).status, 400);
++  assert.equal((await request(put({ revision: saved.revision, pluginsLoadOrder: order, role: 'admin' }))).status, 400);
++  assert.equal(fs.readFileSync(settingsFile, 'utf8'), written); checks.push('Stale, incomplete, duplicate, excessive, unknown and malformed orders cannot overwrite settings');
++  assert.equal((await request({ headers: { authorization: '' } })).status, 401);
++  assert.equal((await request(put({ revision: saved.revision, pluginsLoadOrder: order }, { authorization: '' }))).status, 401);
++  assert.equal((await request(put({ revision: saved.revision, pluginsLoadOrder: order }, { origin: 'https://untrusted.invalid' }))).status, 403);
++  settings.allSettings.adminUiCapabilities = { canViewLogs: true, canConsole: false };
++  assert.equal((await request()).status, 200); assert.equal((await request(put({ revision: saved.revision, pluginsLoadOrder: order }))).status, 403);
++  settings.allSettings.adminUiCapabilities.canViewLogs = false; assert.equal((await request()).status, 403);
++  settings.allSettings.adminUiCapabilities = { canViewLogs: true, canConsole: true };
++  assert.equal(fs.readFileSync(settingsFile, 'utf8'), written); checks.push('Read/edit capabilities, authentication and same-origin protection are enforced');
++  const oldRevision = saved.revision; state.plugins['new-plugin'] = { ...state.plugins['skymp-ui-core'], pluginPath: 'Plugins/new-plugin' }; fs.writeFileSync(stateFile, JSON.stringify(state));
++  assert.equal((await request(put({ revision: oldRevision, pluginsLoadOrder: order }))).status, 409);
++  saved = await (await request()).json(); assert.deepEqual(saved.order, [...order, 'new-plugin']); checks.push('Discovery changes invalidate old edits; newly discovered IDs follow configured plugins');
++  const pending = JSON.parse(fs.readFileSync(settingsFile)); pending.pluginsLoadOrder = ['not-installed', ...order]; fs.writeFileSync(settingsFile, JSON.stringify(pending));
++  saved = await (await request()).json(); assert.deepEqual(saved.order, ['not-installed', ...order, 'new-plugin']);
++  response = await request(put({ revision: saved.revision, pluginsLoadOrder: saved.order })); assert.equal(response.status, 200); saved = await response.json();
++  assert.equal(JSON.parse(fs.readFileSync(settingsFile)).pluginsLoadOrder[0], 'not-installed'); checks.push('Configured missing IDs remain editable and survive saves');
++  const indexFile = path.join(serverRoot, 'ts/index.ts'), index = ts.createSourceFile(indexFile, fs.readFileSync(indexFile, 'utf8'), ts.ScriptTarget.Latest, true);
++  const node = index.statements.find(n => ts.isVariableStatement(n) && n.declarationList.declarations.some(d => d.name.getText(index) === 'buildPluginSortOrder'));
++  assert(node); const code = ts.transpileModule(node.getText(index), { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS } }).outputText;
++  const sort = new Function(code + '\nreturn buildPluginSortOrder;')();
++  const present = [...ids, 'new-plugin', 'later-z', 'later-a'].map(name => ({ manifest: { name } }));
++  assert.deepEqual(sort(present, saved.order).map(p => p.manifest.name), [...order, 'new-plugin', 'later-a', 'later-z']);
++  checks.push('The unchanged real game bootstrap sorter consumes the persisted API order with UI Core before both consumers');
++  fs.writeFileSync(settingsFile, '{broken JSON'); assert.equal((await request()).status, 503);
++  assert.equal((await request(put({ revision: saved.revision, pluginsLoadOrder: saved.order }))).status, 503);
++  assert.equal(fs.readFileSync(settingsFile, 'utf8'), '{broken JSON'); checks.push('Damaged settings fail closed without rewriting the file');
++  const report = { passed: true, checks, skyrimStarted: false };
++  if (process.env.SKYMP_PLUGIN_ORDER_REPORT) fs.writeFileSync(process.env.SKYMP_PLUGIN_ORDER_REPORT, JSON.stringify(report, null, 2));
++  console.log(JSON.stringify(report, null, 2));
++} finally {
++  esbuild.stop(); if (listener?.listening) await new Promise(resolve => listener.close(resolve)); process.chdir(previous);
++  assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert(path.basename(dir).startsWith('skymp-plugin-order-')); fs.rmSync(dir, { recursive: true, force: true });
++}
+diff --git a/skymp5-server/ts/pluginLoadOrder.ts b/skymp5-server/ts/pluginLoadOrder.ts
+new file mode 100644
+index 0000000..079525e
+--- /dev/null
++++ b/skymp5-server/ts/pluginLoadOrder.ts
+@@ -0,0 +1,65 @@
++import { createHash } from 'node:crypto';
++import { readDiscoveryState, type PluginDiscoveryState } from './pluginDiscoveryState';
++
++type Settings = Record<string, unknown>;
++const validName = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(value);
++const validOrder = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 512 && value.every(validName) && new Set(value).size === value.length;
++
++export function inspectPluginLoadOrder(settings: Settings, state: PluginDiscoveryState) {
++  const configured = settings.pluginsLoadOrder ?? [];
++  if (!validOrder(configured)) throw Error('Invalid pluginsLoadOrder in server-settings.json');
++  const discovered = Object.keys(state.plugins).sort((a, b) => a.localeCompare(b));
++  if (!discovered.every(validName)) throw Error('Invalid plugin discovery names');
++  // The existing boot loader loads configured IDs first, then other discovered IDs alphabetically.
++  // Keep configured missing IDs so an update does not discard the operator's future ordering.
++  const order = [...configured, ...discovered.filter(name => !configured.includes(name))];
++  if (order.length > 512) throw Error('Plugin order limit exceeded');
++  const revision = createHash('sha256').update(JSON.stringify({ configured, discovered })).digest('hex');
++  return { ok: true, revision, pluginsLoadOrder: [...configured], order };
++}
++
++export function registerPluginLoadOrder(router: any, dependencies: {
++  read: () => Settings;
++  write: (value: Settings) => void;
++  authorize: (ctx: any, write: boolean) => boolean;
++  log: (message: string) => void;
++}) {
++  router.get('/api/admin/plugins/load-order', (ctx: any) => {
++    if (!dependencies.authorize(ctx, false)) return;
++    ctx.set('Cache-Control', 'no-store');
++    try { ctx.body = inspectPluginLoadOrder(dependencies.read(), readDiscoveryState()); }
++    catch { ctx.status = 503; ctx.body = { ok: false, code: 'PLUGIN_ORDER_UNAVAILABLE' }; }
++  });
++  router.put('/api/admin/plugins/load-order', (ctx: any) => {
++    if (!dependencies.authorize(ctx, true)) return;
++    ctx.set('Cache-Control', 'no-store');
++    let sameOrigin = false;
++    try { const origin = new URL(ctx.get('origin')); sameOrigin = ['http:', 'https:'].includes(origin.protocol) && origin.host === ctx.host; } catch {}
++    if (!sameOrigin || ctx.get('content-type').split(';')[0].trim() !== 'application/json' || !['', 'same-origin', 'none'].includes(ctx.get('sec-fetch-site'))) {
++      ctx.status = 403; ctx.body = { ok: false, code: 'PLUGIN_ORDER_ORIGIN_REQUIRED' }; return;
++    }
++    const body = ctx.request.body;
++    if (!body || typeof body !== 'object' || Array.isArray(body) ||
++        Object.keys(body).some(key => !['revision', 'pluginsLoadOrder'].includes(key)) ||
++        typeof body.revision !== 'string' || !/^[a-f0-9]{64}$/.test(body.revision) || !validOrder(body.pluginsLoadOrder)) {
++      ctx.status = 400; ctx.body = { ok: false, code: 'INVALID_PLUGIN_ORDER' }; return;
++    }
++    try {
++      const latest = dependencies.read();
++      const current = inspectPluginLoadOrder(latest, readDiscoveryState());
++      if (body.revision !== current.revision) {
++        ctx.status = 409; ctx.body = { ok: false, code: 'STALE_PLUGIN_ORDER' }; return;
++      }
++      const requested = body.pluginsLoadOrder as string[];
++      const known = new Set(current.order);
++      if (requested.length !== known.size || !requested.every(name => known.has(name))) {
++        ctx.status = 400; ctx.body = { ok: false, code: 'INVALID_PLUGIN_ORDER' }; return;
++      }
++      // Read the latest settings and replace only this key; preserve auth, mods and discovery flags.
++      latest.pluginsLoadOrder = [...requested];
++      dependencies.write(latest);
++      dependencies.log(`Plugin load order saved (${requested.length} entries); effective at the next game start`);
++      ctx.body = { ...inspectPluginLoadOrder(latest, readDiscoveryState()), restartRequired: true };
++    } catch { ctx.status = 503; ctx.body = { ok: false, code: 'PLUGIN_ORDER_UNAVAILABLE' }; }
++  });
++}
+diff --git a/skymp5-server/ts/ui.ts b/skymp5-server/ts/ui.ts
+index 67d58a4..675ad22 100644
+--- a/skymp5-server/ts/ui.ts
++++ b/skymp5-server/ts/ui.ts
+@@ -1,4 +1,5 @@
+ import * as crypto from 'crypto';
++import { registerPluginLoadOrder } from './pluginLoadOrder';
+ const launcherConnection = require('../../misc/deploy/test-server/launcher-connection.cjs');
+ import { renderAdminLoginPage } from './adminLoginPage';
+ import { registerLauncherResources } from './launcherResources';
+@@ -5472,6 +5473,13 @@ const createApp = (settings: Settings, getOriginPort: () => number) => {
+       ctx.body = filtered.slice(sliceFrom).reverse();
+     });
+ 
++    registerPluginLoadOrder(router, {
++      read: readServerSettingsJson,
++      write: value => { writeServerSettingsJson(value); settings.allSettings = value; },
++      authorize: (ctx, write) => ensureAdminCapability(settings, ctx, write ? 'canConsole' : 'canViewLogs'),
++      log: message => addAdminLog('console', message),
++    });
++
+     // ── Plugin management ───────────────────────────────────────────────
+     router.get('/api/admin/plugins/settings', (ctx: any) => {
+       if (!ensureAdminCapability(settings, ctx, 'canViewLogs')) return;

@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", "module": "Node16", "moduleResolution": "Node16",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"], "strict": true, "esModuleInterop": true,
+    "jsx": "react", "skipLibCheck": true, "resolveJsonModule": true, "noEmit": true,
+    "types": ["node", "react"]
+  },
+  "include": ["src/**/*.ts", "shared/**/*.ts", "client/*.tsx", "client/*.ts", "examples/**/*.ts"],
+  "exclude": ["client/native"]
+}

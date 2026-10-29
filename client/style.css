@@ -1,0 +1,81 @@
+.skymp-ui-core { --ui-scale: 1; position: fixed; inset: 0; z-index: 1100; pointer-events: none; color: #f4ead4; font: 17px/1.5 Georgia, 'Times New Roman', serif; text-align: left; }
+.skymp-ui-core * { box-sizing: border-box; }
+.skymp-ui-core .ui-panel { background: rgba(20,24,25,.94); border: 1px solid #a99a70; box-shadow: 0 0 0 2px rgba(20,24,25,.65), 0 8px 30px #0007; border-radius: 3px; padding: 14px 18px; overflow-wrap: anywhere; }
+.skymp-ui-core p { margin: 8px 0; white-space: pre-wrap; }
+.skymp-ui-core h2 { color: #e9d9a5; font-size: 24px; margin: 0 0 16px; letter-spacing: .04em; }
+.skymp-ui-core ul { list-style: none; margin: 0; padding: 0; }
+.skymp-ui-core .ui-value { float: right; margin-left: 14px; }
+.skymp-ui-core progress { display: block; width: 100%; height: 12px; margin: 10px 0; accent-color: #b9a068; }
+.skymp-ui-core .ui-notifications { position: absolute; top: 28px; left: 50%; width: min(440px, 50vw); transform: translateX(-50%) scale(var(--ui-scale)); transform-origin: top center; display: grid; gap: 8px; }
+.skymp-ui-core .tone-info { color: #e4eaf1; }
+.skymp-ui-core .tone-success { color: #bfe6b7; }
+.skymp-ui-core .tone-warning { color: #f7dc95; }
+.skymp-ui-core .tone-error { color: #ffc3b9; }
+.skymp-ui-core .ui-modal-shade { pointer-events: auto; position: absolute; inset: 0; display: grid; place-items: center; background: #0005; }
+.skymp-ui-core .ui-menu-panel { pointer-events: auto; position: absolute; top: 15%; right: 24px; }
+.skymp-ui-core .ui-menu { pointer-events: auto; width: min(560px, 90vw); max-height: calc(85vh / var(--ui-scale)); overflow-y: auto; transform: scale(var(--ui-scale)); transform-origin: center; }
+.skymp-ui-core .ui-field { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
+.skymp-ui-core button, .skymp-ui-core input, .skymp-ui-core select { font: inherit; color: #f4ead4; background: #1a2024; border: 1px solid #a99a70; border-radius: 2px; padding: 8px 12px; min-height: 38px; }
+.skymp-ui-core input[type=checkbox] { min-height: 20px; width: 20px; accent-color: #d6bd79; }
+.skymp-ui-core input[type=range] { width: 100%; accent-color: #d6bd79; }
+.skymp-ui-core button { cursor: pointer; }
+.skymp-ui-core button:hover { background: #363a31; }
+.skymp-ui-core :focus-visible { outline: 3px solid #f5dd9d; outline-offset: 3px; }
+.skymp-ui-core button:disabled { cursor: wait; opacity: .6; }
+.skymp-ui-core .ui-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.skymp-ui-core .ui-display-button { pointer-events: auto; position: absolute; right: 24px; bottom: 8px; font-size: 14px; }
+.skymp-ui-core fieldset { margin: 12px 0; border: 1px solid #77745e; padding: 8px; display: grid; gap: 8px; }
+@media (max-width: 800px) { .skymp-ui-core { font-size: 15px; } .skymp-ui-core .ui-widgets { width: 30vw; } .skymp-ui-core .ui-panel { padding: 10px; } }
+
+/* Each element belongs to this host; no interactive layer exists during gameplay. */
+.skymp-ui-core { --ui-metal: #b6a277; --ui-parchment: #eee2c4; }
+.skymp-ui-core .ui-layout-item { position: absolute; pointer-events: none; }
+.skymp-ui-core .ui-item-content { position: absolute; top: 0; left: 0; width: 300px; transform-origin: top left; max-height: calc(100vh - 32px); overflow: hidden; }
+.skymp-ui-core .ui-meter-content { width: 112px; overflow: visible; }
+.skymp-ui-core .ui-widget { background: linear-gradient(120deg, #171b1eea, #121517dc); border-color: #978766; border-radius: 0; }
+.skymp-ui-core .ui-status { --sigil: #d8b877; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 3px 8px; text-align: center; color: var(--ui-parchment); filter: drop-shadow(0 2px 4px #000c); }
+.skymp-ui-core .ui-sigil-1 { --sigil: #9dc8c9; }
+.skymp-ui-core .ui-sigil-2 { --sigil: #c1b4d6; }
+.skymp-ui-core .ui-medallion { width: 100px; height: 100px; position: relative; background: radial-gradient(circle, #14191cd9 46%, #0c1013a1 63%, transparent 66%); }
+.skymp-ui-core .ui-meter-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; }
+.skymp-ui-core .ui-meter-bezel { stroke: #8d805f; stroke-width: .8; }
+.skymp-ui-core .ui-meter-engraving { fill: #c5b486; stroke: #171c1f; stroke-width: .6; }
+.skymp-ui-core .ui-meter-track { stroke: #a99e8140; stroke-width: 3; }
+.skymp-ui-core .ui-meter-fill { stroke: var(--sigil); stroke-width: 3; stroke-linecap: butt; transition: stroke-dasharray .35s ease; }
+.skymp-ui-core .ui-rune { position: absolute; left: 30px; top: 15px; width: 40px; height: 48px; fill: none; stroke: var(--sigil); stroke-width: 4; stroke-linecap: square; stroke-linejoin: miter; }
+.skymp-ui-core .ui-meter-number { position: absolute; bottom: 14px; left: 0; width: 100%; color: #f7efd9; font: 18px/1 Georgia, serif; font-variant-numeric: tabular-nums; }
+.skymp-ui-core .ui-meter-number small { color: #c4bba6; font-size: 10px; }
+.skymp-ui-core .ui-status-value { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skymp-ui-core .ui-status-label { color: #ede3ca; font-size: 12px; line-height: 1.35; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
+.skymp-ui-core .ui-status-detail { color: #d1c8b4; font: 11px/1.4 'Segoe UI', sans-serif; min-height: 16px; overflow-wrap: anywhere; }
+.skymp-ui-core .ui-standalone-status.tone-success { --sigil: #bfe6b7; }
+.skymp-ui-core .ui-status.tone-warning { --sigil: #f0c478; }
+.skymp-ui-core .ui-status.tone-error { --sigil: #ed9d8d; }
+.skymp-ui-core .tone-warning .ui-status-detail { color: #f0cc8d; }
+.skymp-ui-core .tone-error .ui-status-detail { color: #f3b2a2; }
+.skymp-ui-core .ui-sr-only { position: absolute; width: 1px; height: 1px; clip: rect(0,0,0,0); overflow: hidden; }
+.skymp-ui-core .ui-editor-grid { position: absolute; inset: 0; background: linear-gradient(#090e1438, #090e1466), repeating-linear-gradient(0deg, transparent 0 39px, #e3d3ac0c 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, #e3d3ac0c 39px 40px); border: 16px solid #05080b35; }
+.skymp-ui-core .ui-editable { pointer-events: auto; cursor: move; touch-action: none; user-select: none; outline: 1px dashed #bbaa7880; outline-offset: 6px; }
+.skymp-ui-core .ui-editable:hover { outline-color: #e9d39b; background: #c3ad6c0b; }
+.skymp-ui-core .ui-selected { outline: 1px solid #eddb9d; background: #c3ad6c10; z-index: 3; box-shadow: 0 0 26px #d2b87910; }
+.skymp-ui-core .ui-edit-label { position: absolute; top: -26px; left: -6px; max-width: calc(100% + 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #151c22ee; border: 1px solid #8a7c5e; padding: 2px 6px; color: #eee0bd; font: 11px/1.4 'Segoe UI', sans-serif; }
+.skymp-ui-core .ui-resize-handle { position: absolute; right: -11px; bottom: -11px; width: 22px; height: 22px; background: #e1cf9a; border: 2px solid #14191f; color: #171a20; cursor: nwse-resize; text-align: center; font: bold 20px/15px sans-serif; }
+.skymp-ui-core .ui-hidden-preview .ui-item-content { opacity: .3; }
+.skymp-ui-core .ui-editor-panel { pointer-events: auto; position: absolute; top: 32px; right: 32px; z-index: 10; width: min(340px, calc(100vw - 40px)); max-height: calc(100vh - 64px); overflow: auto; padding: 24px; border: 1px solid #aa9568; border-radius: 0; background: linear-gradient(140deg, #1c2329f5, #10161cf5); box-shadow: 0 0 0 3px #11181a90, 0 12px 55px #0008; font-size: 14px; }
+.skymp-ui-core .ui-editor-panel h2 { margin: 3px 0 10px; font-size: 27px; font-weight: 400; }
+.skymp-ui-core .ui-editor-eyebrow { color: #aa9568; font: 10px/1.6 'Segoe UI', sans-serif; letter-spacing: .24em; }
+.skymp-ui-core .ui-editor-hint { color: #c5c1b5; font: 12px/1.6 'Segoe UI', sans-serif; }
+.skymp-ui-core .ui-editor-keyboard { color: #dacba5; font: 11px/1.5 'Segoe UI', sans-serif; }
+.skymp-ui-core .ui-editor-panel .ui-field { margin: 12px 0; gap: 4px; }
+.skymp-ui-core .ui-editor-panel .ui-field output { color: #dbca9f; }
+.skymp-ui-core .ui-editor-panel .ui-actions { gap: 8px; margin-top: 16px; }
+.skymp-ui-core .ui-editor-panel .ui-primary { width: 100%; background: #b9a16a; border-color: #dfcc95; color: #11171b; font-weight: 700; }
+.skymp-ui-core .ui-editor-panel .ui-primary:hover { background: #d4bd84; }
+.skymp-ui-core .ui-checkbox { display: flex; align-items: center; gap: 10px; }
+.skymp-ui-core .ui-layout-feedback { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: 70vw; font-size: 14px; }
+@media (max-width: 800px) { .skymp-ui-core .ui-editor-panel { top: 20px; right: 20px; max-height: calc(100vh - 40px); padding: 16px; width: min(300px, calc(100vw - 40px)); } }
+@media (prefers-reduced-motion: reduce) { .skymp-ui-core .ui-meter-fill { transition: none; } }
+
+.skymp-ui-core .ui-editor-panel { display: flex; flex-direction: column; overflow: hidden; }
+.skymp-ui-core .ui-editor-scroll { min-height: 0; overflow-y: auto; padding: 0 6px 0 0; }
+.skymp-ui-core .ui-editor-panel > .ui-actions { flex-shrink: 0; padding-top: 12px; border-top: 1px solid #8a7c5e66; }

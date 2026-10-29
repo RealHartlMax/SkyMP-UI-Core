@@ -1,0 +1,17 @@
+{
+  "close": "Close",
+  "display": "Display",
+  "scale": "UI scale",
+  "visible": "Visible",
+  "position": "Position",
+  "info": "Info",
+  "success": "Success",
+  "warning": "Warning",
+  "error": "Error",
+  "pending": "Waiting for server …",
+  "language": "Language / Sprache",
+  "top-left": "Top left",
+  "top-right": "Top right",
+  "bottom-left": "Bottom left",
+  "bottom-right": "Bottom right"
+}

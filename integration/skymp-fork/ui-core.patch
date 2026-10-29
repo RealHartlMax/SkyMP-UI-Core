@@ -1,0 +1,1268 @@
+diff --git a/skymp5-client/src/services/services/browserService.ts b/skymp5-client/src/services/services/browserService.ts
+index 3ef0d8f..05d1476 100644
+--- a/skymp5-client/src/services/services/browserService.ts
++++ b/skymp5-client/src/services/services/browserService.ts
+@@ -11,18 +11,22 @@ import { FormView } from '../../view/formView';
+ import { QueryKeyCodeBindings } from '../events/queryKeyCodeBindings';
+ import { ClientListener, CombinedController, Sp } from './clientListener';
+ import { ChatBridge } from './chatBridge';
++import { UiCoreBridge } from './uiCoreBridge';
+ 
+ const unfocusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:browserUnfocused', {}))`;
+ const focusEventString = `window.dispatchEvent(new CustomEvent('skymp5-client:browserFocused', {}))`;
+ 
+ export class BrowserService extends ClientListener {
+   private chat: ChatBridge;
++  private ui: UiCoreBridge;
++  private uiFocused = false;
+   private openingWithEnter = false;
+   constructor(private sp: Sp, private controller: CombinedController) {
+     super();
+ 
+     this.sp.browser.setVisible(false);
+-    this.chat = new ChatBridge(sp, controller, () => this.setFocus(false));
++    this.chat = new ChatBridge(sp, controller, () => this.releaseChatFocus());
++    this.ui = new UiCoreBridge(sp, controller, focused => this.onUiFocus(focused));
+ 
+     this.controller.emitter.on('queryKeyCodeBindings', (e) =>
+       this.onQueryKeyCodeBindings(e),
+@@ -47,13 +51,16 @@ export class BrowserService extends ClientListener {
+     if (e.isDown([DxScanCode.F2])) {
+       if (this.canFocus()) {
+         const visible = !this.sp.browser.isVisible();
+-        if (!visible) this.chat.close();
++        if (!visible) { this.ui.setAllowed(false); this.chat.close(); }
++        else this.ui.setAllowed(true);
+         this.sp.browser.setVisible(visible);
+       }
+     }
++    if (this.uiFocused && e.isDown([DxScanCode.F6])) { this.ui.dismiss(); return; }
+     if (this.canFocus() && e.isDown([DxScanCode.F6])) {
+       const newState = !this.sp.browser.isFocused();
+       if (newState) {
++        this.ui.setAllowed(true);
+         this.sp.browser.setVisible(true);
+         this.setFocus(true);
+         if (this.chat.isPlaying()) this.chat.open();
+@@ -62,6 +69,7 @@ export class BrowserService extends ClientListener {
+       }
+     }
+     if (this.canFocus() && e.isDown([DxScanCode.Enter]) && !this.sp.browser.isFocused()) {
++      this.ui.setAllowed(true);
+       this.sp.browser.setVisible(true);
+       this.setFocus(true);
+       if (this.chat.isPlaying()) {
+@@ -70,12 +78,31 @@ export class BrowserService extends ClientListener {
+       }
+     }
+     if (e.isDown([DxScanCode.Escape])) {
++      if (this.uiFocused) { this.ui.dismiss(); return; }
+       if (this.sp.browser.isFocused()) {
+         this.chat.close();
+       }
+     }
+   }
+ 
++  // One native focus owner: Skyrim menus > UI dialog > chat > gameplay.
++  private releaseChatFocus() {
++    if (!this.uiFocused) this.setFocus(false);
++  }
++
++  private onUiFocus(focused: boolean) {
++    if (focused) {
++      if (!this.canFocus() || !this.ui?.isActive()) return;
++      this.uiFocused = true;
++      this.chat.close();
++      this.sp.browser.setVisible(true);
++      this.setFocus(true);
++    } else if (this.uiFocused) {
++      this.uiFocused = false;
++      this.setFocus(false);
++    }
++  }
++
+   private setFocus(focused: boolean) {
+     this.sp.browser.setFocused(focused);
+     this.sp.browser.executeJavaScript(focused ? focusEventString : unfocusEventString);
+@@ -99,11 +126,13 @@ export class BrowserService extends ClientListener {
+ 
+   private onMenuOpen(e: MenuOpenEvent) {
+     if (this.isBadMenu(e.name)) {
++      this.badMenusOpen.add(e.name);
++      this.ui.setAllowed(false);
+       this.chat.close();
+       this.sp.browser.setVisible(false);
+-      this.badMenusOpen.add(e.name);
+     } else if (e.name === Menu.HUD && this.badMenusOpen.size === 0) {
+       this.sp.browser.setVisible(true);
++      this.ui.setAllowed(this.canFocus());
+     }
+   }
+ 
+@@ -111,10 +140,12 @@ export class BrowserService extends ClientListener {
+     if (this.badMenusOpen.delete(e.name)) {
+       if (this.badMenusOpen.size === 0) {
+         this.sp.browser.setVisible(true);
++        this.ui.setAllowed(this.canFocus());
+       }
+     }
+ 
+     if (e.name === Menu.HUD) {
++      this.ui.setAllowed(false);
+       this.chat.close();
+       this.sp.browser.setVisible(false);
+     }
+diff --git a/skymp5-client/src/services/services/uiCoreBridge.ts b/skymp5-client/src/services/services/uiCoreBridge.ts
+new file mode 100644
+index 0000000..4c7ee4c
+--- /dev/null
++++ b/skymp5-client/src/services/services/uiCoreBridge.ts
+@@ -0,0 +1,94 @@
++// Copied into skymp5-client/src/services/services; no second browser or native plugin.
++import { MsgType } from '../../messages';
++export class UiCoreBridge {
++  private playing = false;
++  private frontId: string | null = null;
++  private editorVersion = 0;
++  private sessionId: string | null = null;
++  private ready = false;
++  private sequence = 0;
++  private attempts = 0;
++  private deadline = 0;
++  private heartbeat = 0;
++  private lastAlive = 0;
++  private allowed = true;
++  constructor(private sp: any, private controller: any, private requestFocus: (focused: boolean) => void) {
++    controller.on('browserMessage', (e: any) => {
++      const [type, data] = e.arguments;
++      if (type === 'skympUi:frontReady' && data?.protocolVersion === 1 && typeof data.frontId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(data.frontId)) {
++        if (this.frontId === data.frontId) return;
++        this.frontId = data.frontId; this.editorVersion = data.editorVersion === 1 ? 1 : 0; this.clearSession(); this.attempts = 0;
++        this.dispatch({ customPacketType: 'skympUi:interaction', allowed: this.allowed }); this.handshake();
++      } else if (type === 'skympUi:focus' && typeof data === 'boolean') this.requestFocus(data && this.ready && this.allowed);
++      else if (type === 'skympUi:action' && this.ready && this.allowed && data?.protocolVersion === 1 &&
++        typeof data.widgetId === 'string' && data.widgetId.length <= 96 && typeof data.actionId === 'string' && data.actionId.length <= 48 &&
++        typeof data.requestId === 'string' && data.requestId.startsWith(this.sessionId + '_') && data.requestId.length <= 96) {
++        try {
++          const safe = { protocolVersion: 1, widgetId: data.widgetId, actionId: data.actionId, requestId: data.requestId, payload: data.payload };
++          if (JSON.stringify(safe).length <= 8192) this.send('action', safe);
++        } catch { /* Malformed CEF data cannot reach the server. */ }
++      }
++    });
++    controller.emitter.on('browserWindowLoaded', () => this.probe());
++    controller.emitter.on('createActorMessage', (e: any) => { if (e.message.isMe && !this.playing) { this.playing = true; this.handshake(); } });
++    for (const event of ['connectionAccepted', 'connectionDisconnect', 'connectionFailed', 'connectionDenied'])
++      controller.emitter.on(event, () => this.reset(event === 'connectionAccepted' ? 'connecting' : 'disconnected'));
++    controller.emitter.on('customPacketMessage', (e: any) => {
++      const raw = e.message.contentJsonDump;
++      if (!this.playing || typeof raw !== 'string' || raw.length > 65536) return;
++      try {
++        const p = JSON.parse(raw);
++        if (typeof p?.customPacketType !== 'string' || !p.customPacketType.startsWith('skympUi:')) return;
++        if (p.protocolVersion !== 1 || p.customPacketType === 'skympUi:unavailable') { this.unavailable(); return; }
++        if (p.frontId !== this.frontId) return;
++        if (p.customPacketType === 'skympUi:snapshot') {
++          if (p.apiVersion !== 1 || typeof p.sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(p.sessionId) ||
++              !Number.isSafeInteger(p.sequence) || p.sequence <= this.sequence || !Array.isArray(p.widgets) || !Array.isArray(p.menus)) return;
++          if (this.ready && p.sessionId !== this.sessionId) return;
++          this.sessionId = p.sessionId; this.ready = true; this.deadline = 0; this.sequence = p.sequence;
++          this.lastAlive = Date.now(); this.heartbeat = Date.now() + 10000; this.dispatch(p);
++        } else if (this.ready && p.sessionId === this.sessionId) {
++          if (p.customPacketType === 'skympUi:update') {
++            if (!Number.isSafeInteger(p.sequence) || p.sequence <= this.sequence) return;
++            this.sequence = p.sequence; this.lastAlive = Date.now(); this.dispatch(p);
++          } else if (p.customPacketType === 'skympUi:ack') this.dispatch(p);
++          else if (p.customPacketType === 'skympUi:alive') this.lastAlive = Date.now();
++          else if (p.customPacketType === 'skympUi:edit' && this.editorVersion === 1) this.dispatch(p);
++        }
++      } catch { /* Isolate unrelated native packets. */ }
++    });
++    controller.on('update', () => {
++      const now = Date.now();
++      if (this.deadline && now >= this.deadline) { if (this.attempts < 3) this.handshake(); else this.unavailable(); }
++      if (this.ready && now - this.lastAlive > 30000) this.unavailable();
++      if (this.ready && now >= this.heartbeat) { this.heartbeat = now + 10000; this.send('heartbeat', { frontId: this.frontId, sessionId: this.sessionId }); }
++    });
++    controller.once('update', () => this.probe());
++  }
++  isActive() { return this.ready; }
++  dismiss() { this.sp.browser.executeJavaScript("window.dispatchEvent(new Event('skympUi:dismiss'))"); }
++  setAllowed(allowed: boolean) {
++    this.allowed = allowed; if (!allowed) this.requestFocus(false);
++    this.dispatch({ customPacketType: 'skympUi:interaction', allowed });
++  }
++  private probe() { this.sp.browser.executeJavaScript("window.dispatchEvent(new Event('skympUi:probe'))"); }
++  private send(type: string, data: any = {}) {
++    this.controller.emitter.emit('sendMessage', { message: { t: MsgType.CustomPacket,
++      contentJsonDump: JSON.stringify({ customPacketType: 'skympUi:' + type, protocolVersion: 1, ...data }) }, reliability: 'reliable' });
++  }
++  private dispatch(data: any) {
++    const json = JSON.stringify(JSON.stringify(data)).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
++    this.sp.browser.executeJavaScript(`window.dispatchEvent(new CustomEvent('skympUi:packet',{detail:JSON.parse(${json})}))`);
++  }
++  private clearSession() { this.ready = false; this.sessionId = null; this.sequence = 0; this.deadline = 0; this.requestFocus(false); }
++  private handshake() {
++    if (!this.playing || !this.frontId) return;
++    this.attempts++; this.deadline = Date.now() + 2000;
++    this.send('ready', { frontId: this.frontId, ...(this.editorVersion === 1 ? { editorVersion: 1 } : {}) });
++  }
++  private unavailable() { this.clearSession(); this.dispatch({ customPacketType: 'skympUi:status', status: 'unavailable' }); }
++  private reset(status: string) {
++    this.playing = false; this.frontId = null; this.attempts = 0; this.clearSession();
++    this.dispatch({ customPacketType: 'skympUi:reset', status }); this.probe();
++  }
++}
+diff --git a/skymp5-client/tests/helpers/chatHarness.cjs b/skymp5-client/tests/helpers/chatHarness.cjs
+index faae5da..c056ec8 100644
+--- a/skymp5-client/tests/helpers/chatHarness.cjs
++++ b/skymp5-client/tests/helpers/chatHarness.cjs
+@@ -23,7 +23,9 @@ const declarations = source.statements.filter(n => ts.isEnumDeclaration(n) && ['
+ const enums = load(declarations.map(n => n.getText(source).replace('const enum', 'enum')).join('\n'));
+ const MsgType = load(fs.readFileSync(path.join(fork, 'skymp5-client/src/messages.ts'), 'utf8')).MsgType;
+ const { ChatBridge } = load(read('skymp5-client/src/services/services/chatBridge.ts'), { '../../messages': { MsgType } });
++const { UiCoreBridge } = load(read('skymp5-client/src/services/services/uiCoreBridge.ts'), { '../../messages': { MsgType } });
+ const { BrowserService } = load(read('skymp5-client/src/services/services/browserService.ts'), {
++  './uiCoreBridge': { UiCoreBridge },
+   skyrimPlatform: enums, '../../view/formView': { FormView: {} }, './clientListener': { ClientListener: class {} }, './chatBridge': { ChatBridge },
+ });
+ const { KeyboardEventsService } = load(read('skymp5-client/src/services/services/keyboardEventsService.ts'), {
+diff --git a/skymp5-front/src/features/uiCore/index.css b/skymp5-front/src/features/uiCore/index.css
+new file mode 100644
+index 0000000..0adbd3a
+--- /dev/null
++++ b/skymp5-front/src/features/uiCore/index.css
+@@ -0,0 +1,79 @@
++.skymp-ui-core { --ui-scale: 1; position: fixed; inset: 0; z-index: 1100; pointer-events: none; color: #f4ead4; font: 17px/1.5 Georgia, 'Times New Roman', serif; text-align: left; }
++.skymp-ui-core * { box-sizing: border-box; }
++.skymp-ui-core .ui-panel { background: rgba(20,24,25,.94); border: 1px solid #a99a70; box-shadow: 0 0 0 2px rgba(20,24,25,.65), 0 8px 30px #0007; border-radius: 3px; padding: 14px 18px; overflow-wrap: anywhere; }
++.skymp-ui-core p { margin: 8px 0; white-space: pre-wrap; }
++.skymp-ui-core h2 { color: #e9d9a5; font-size: 24px; margin: 0 0 16px; letter-spacing: .04em; }
++.skymp-ui-core ul { list-style: none; margin: 0; padding: 0; }
++.skymp-ui-core .ui-value { float: right; margin-left: 14px; }
++.skymp-ui-core progress { display: block; width: 100%; height: 12px; margin: 10px 0; accent-color: #b9a068; }
++.skymp-ui-core .ui-notifications { position: absolute; top: 28px; left: 50%; width: min(440px, 50vw); transform: translateX(-50%) scale(var(--ui-scale)); transform-origin: top center; display: grid; gap: 8px; }
++.skymp-ui-core .tone-info { color: #e4eaf1; }
++.skymp-ui-core .tone-success { color: #bfe6b7; }
++.skymp-ui-core .tone-warning { color: #f7dc95; }
++.skymp-ui-core .tone-error { color: #ffc3b9; }
++.skymp-ui-core .ui-modal-shade { pointer-events: auto; position: absolute; inset: 0; display: grid; place-items: center; background: #0005; }
++.skymp-ui-core .ui-menu-panel { pointer-events: auto; position: absolute; top: 15%; right: 24px; }
++.skymp-ui-core .ui-menu { pointer-events: auto; width: min(560px, 90vw); max-height: calc(85vh / var(--ui-scale)); overflow-y: auto; transform: scale(var(--ui-scale)); transform-origin: center; }
++.skymp-ui-core .ui-field { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
++.skymp-ui-core button, .skymp-ui-core input, .skymp-ui-core select { font: inherit; color: #f4ead4; background: #1a2024; border: 1px solid #a99a70; border-radius: 2px; padding: 8px 12px; min-height: 38px; }
++.skymp-ui-core input[type=checkbox] { min-height: 20px; width: 20px; accent-color: #d6bd79; }
++.skymp-ui-core input[type=range] { width: 100%; accent-color: #d6bd79; }
++.skymp-ui-core button { cursor: pointer; }
++.skymp-ui-core button:hover { background: #363a31; }
++.skymp-ui-core :focus-visible { outline: 3px solid #f5dd9d; outline-offset: 3px; }
++.skymp-ui-core button:disabled { cursor: wait; opacity: .6; }
++.skymp-ui-core .ui-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
++.skymp-ui-core .ui-display-button { pointer-events: auto; position: absolute; right: 24px; bottom: 8px; font-size: 14px; }
++.skymp-ui-core fieldset { margin: 12px 0; border: 1px solid #77745e; padding: 8px; display: grid; gap: 8px; }
++@media (max-width: 800px) { .skymp-ui-core { font-size: 15px; } .skymp-ui-core .ui-widgets { width: 30vw; } .skymp-ui-core .ui-panel { padding: 10px; } }
++
++/* Each element belongs to this host; no interactive layer exists during gameplay. */
++.skymp-ui-core { --ui-metal: #b6a277; --ui-parchment: #eee2c4; }
++.skymp-ui-core .ui-layout-item { position: absolute; pointer-events: none; }
++.skymp-ui-core .ui-item-content { position: absolute; top: 0; left: 0; width: 300px; transform-origin: top left; max-height: calc(100vh - 32px); overflow: hidden; }
++.skymp-ui-core .ui-meter-content { width: 112px; overflow: visible; }
++.skymp-ui-core .ui-widget { background: linear-gradient(120deg, #171b1eea, #121517dc); border-color: #978766; border-radius: 0; }
++.skymp-ui-core .ui-status { --sigil: #d8b877; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 3px 8px; text-align: center; color: var(--ui-parchment); filter: drop-shadow(0 2px 4px #000c); }
++.skymp-ui-core .ui-sigil-1 { --sigil: #9dc8c9; }
++.skymp-ui-core .ui-sigil-2 { --sigil: #c1b4d6; }
++.skymp-ui-core .ui-medallion { width: 100px; height: 100px; position: relative; background: radial-gradient(circle, #14191cd9 46%, #0c1013a1 63%, transparent 66%); }
++.skymp-ui-core .ui-meter-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; }
++.skymp-ui-core .ui-meter-bezel { stroke: #8d805f; stroke-width: .8; }
++.skymp-ui-core .ui-meter-engraving { fill: #c5b486; stroke: #171c1f; stroke-width: .6; }
++.skymp-ui-core .ui-meter-track { stroke: #a99e8140; stroke-width: 3; }
++.skymp-ui-core .ui-meter-fill { stroke: var(--sigil); stroke-width: 3; stroke-linecap: butt; transition: stroke-dasharray .35s ease; }
++.skymp-ui-core .ui-rune { position: absolute; left: 30px; top: 15px; width: 40px; height: 48px; fill: none; stroke: var(--sigil); stroke-width: 4; stroke-linecap: square; stroke-linejoin: miter; }
++.skymp-ui-core .ui-meter-number { position: absolute; bottom: 14px; left: 0; width: 100%; color: #f7efd9; font: 18px/1 Georgia, serif; font-variant-numeric: tabular-nums; }
++.skymp-ui-core .ui-meter-number small { color: #c4bba6; font-size: 10px; }
++.skymp-ui-core .ui-status-label { color: #ede3ca; font-size: 12px; line-height: 1.35; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
++.skymp-ui-core .ui-status-detail { color: #d1c8b4; font: 11px/1.4 'Segoe UI', sans-serif; min-height: 16px; overflow-wrap: anywhere; }
++.skymp-ui-core .ui-status.tone-warning { --sigil: #f0c478; }
++.skymp-ui-core .ui-status.tone-error { --sigil: #ed9d8d; }
++.skymp-ui-core .tone-warning .ui-status-detail { color: #f0cc8d; }
++.skymp-ui-core .tone-error .ui-status-detail { color: #f3b2a2; }
++.skymp-ui-core .ui-sr-only { position: absolute; width: 1px; height: 1px; clip: rect(0,0,0,0); overflow: hidden; }
++.skymp-ui-core .ui-editor-grid { position: absolute; inset: 0; background: linear-gradient(#090e1438, #090e1466), repeating-linear-gradient(0deg, transparent 0 39px, #e3d3ac0c 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, #e3d3ac0c 39px 40px); border: 16px solid #05080b35; }
++.skymp-ui-core .ui-editable { pointer-events: auto; cursor: move; touch-action: none; user-select: none; outline: 1px dashed #bbaa7880; outline-offset: 6px; }
++.skymp-ui-core .ui-editable:hover { outline-color: #e9d39b; background: #c3ad6c0b; }
++.skymp-ui-core .ui-selected { outline: 1px solid #eddb9d; background: #c3ad6c10; z-index: 3; box-shadow: 0 0 26px #d2b87910; }
++.skymp-ui-core .ui-edit-label { position: absolute; top: -26px; left: -6px; max-width: calc(100% + 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #151c22ee; border: 1px solid #8a7c5e; padding: 2px 6px; color: #eee0bd; font: 11px/1.4 'Segoe UI', sans-serif; }
++.skymp-ui-core .ui-resize-handle { position: absolute; right: -11px; bottom: -11px; width: 22px; height: 22px; background: #e1cf9a; border: 2px solid #14191f; color: #171a20; cursor: nwse-resize; text-align: center; font: bold 20px/15px sans-serif; }
++.skymp-ui-core .ui-hidden-preview .ui-item-content { opacity: .3; }
++.skymp-ui-core .ui-editor-panel { pointer-events: auto; position: absolute; top: 32px; right: 32px; z-index: 10; width: min(340px, calc(100vw - 40px)); max-height: calc(100vh - 64px); overflow: auto; padding: 24px; border: 1px solid #aa9568; border-radius: 0; background: linear-gradient(140deg, #1c2329f5, #10161cf5); box-shadow: 0 0 0 3px #11181a90, 0 12px 55px #0008; font-size: 14px; }
++.skymp-ui-core .ui-editor-panel h2 { margin: 3px 0 10px; font-size: 27px; font-weight: 400; }
++.skymp-ui-core .ui-editor-eyebrow { color: #aa9568; font: 10px/1.6 'Segoe UI', sans-serif; letter-spacing: .24em; }
++.skymp-ui-core .ui-editor-hint { color: #c5c1b5; font: 12px/1.6 'Segoe UI', sans-serif; }
++.skymp-ui-core .ui-editor-keyboard { color: #dacba5; font: 11px/1.5 'Segoe UI', sans-serif; }
++.skymp-ui-core .ui-editor-panel .ui-field { margin: 12px 0; gap: 4px; }
++.skymp-ui-core .ui-editor-panel .ui-field output { color: #dbca9f; }
++.skymp-ui-core .ui-editor-panel .ui-actions { gap: 8px; margin-top: 16px; }
++.skymp-ui-core .ui-editor-panel .ui-primary { width: 100%; background: #b9a16a; border-color: #dfcc95; color: #11171b; font-weight: 700; }
++.skymp-ui-core .ui-editor-panel .ui-primary:hover { background: #d4bd84; }
++.skymp-ui-core .ui-checkbox { display: flex; align-items: center; gap: 10px; }
++.skymp-ui-core .ui-layout-feedback { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: 70vw; font-size: 14px; }
++@media (max-width: 800px) { .skymp-ui-core .ui-editor-panel { top: 20px; right: 20px; max-height: calc(100vh - 40px); padding: 16px; width: min(300px, calc(100vw - 40px)); } }
++@media (prefers-reduced-motion: reduce) { .skymp-ui-core .ui-meter-fill { transition: none; } }
++
++.skymp-ui-core .ui-editor-panel { display: flex; flex-direction: column; overflow: hidden; }
++.skymp-ui-core .ui-editor-scroll { min-height: 0; overflow-y: auto; padding: 0 6px 0 0; }
++.skymp-ui-core .ui-editor-panel > .ui-actions { flex-shrink: 0; padding-top: 12px; border-top: 1px solid #8a7c5e66; }
+diff --git a/skymp5-front/src/features/uiCore/index.js b/skymp5-front/src/features/uiCore/index.js
+new file mode 100644
+index 0000000..d2b6ca8
+--- /dev/null
++++ b/skymp5-front/src/features/uiCore/index.js
+@@ -0,0 +1,928 @@
++// client/host.tsx
++import React2, { useCallback, useEffect as useEffect2, useRef as useRef2, useState } from "react";
++
++// locales/de.json
++var de_default = {
++  close: "Schlie\xDFen",
++  display: "Darstellung",
++  scale: "UI-Skalierung",
++  visible: "Sichtbar",
++  position: "Position",
++  info: "Hinweis",
++  success: "Erfolg",
++  warning: "Warnung",
++  error: "Fehler",
++  pending: "Warte auf Server \u2026",
++  language: "Sprache / Language",
++  "top-left": "Oben links",
++  "top-right": "Oben rechts",
++  "bottom-left": "Unten links",
++  "bottom-right": "Unten rechts"
++};
++
++// locales/en.json
++var en_default = {
++  close: "Close",
++  display: "Display",
++  scale: "UI scale",
++  visible: "Visible",
++  position: "Position",
++  info: "Info",
++  success: "Success",
++  warning: "Warning",
++  error: "Error",
++  pending: "Waiting for server \u2026",
++  language: "Language / Sprache",
++  "top-left": "Top left",
++  "top-right": "Top right",
++  "bottom-left": "Bottom left",
++  "bottom-right": "Bottom right"
++};
++
++// shared/localization.ts
++var bundledTranslations = { de: de_default, en: en_default };
++function translations(input = {}) {
++  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => key !== "de" && key !== "en")) throw new TypeError("Invalid locale catalog");
++  const result = { de: { ...de_default }, en: { ...en_default } };
++  for (const locale of ["de", "en"]) {
++    const custom = input[locale];
++    if (custom === void 0) continue;
++    if (!custom || typeof custom !== "object" || Array.isArray(custom)) throw new TypeError("Invalid locale: " + locale);
++    for (const [key, value] of Object.entries(custom)) {
++      if (!Object.prototype.hasOwnProperty.call(de_default, key) || typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f]/.test(value)) throw new TypeError("Invalid locale key/text: " + locale + "." + key);
++      result[locale][key] = value;
++    }
++  }
++  return result;
++}
++
++// shared/contracts.ts
++var PROTOCOL_VERSION = 1;
++var PREFIX = "skympUi:";
++var POSITIONS = ["top-left", "top-right", "bottom-left", "bottom-right"];
++var TONES = ["info", "success", "warning", "error"];
++var OWNER_RE = /^[a-z][a-z0-9-]{0,47}$/;
++var ID_RE = /^[a-z][a-z0-9-]{0,47}:[a-z][a-z0-9._-]{0,46}$/;
++var TOKEN_RE = /^[a-zA-Z0-9_-]{1,64}$/;
++var ACTION_RE = /^[a-z][a-z0-9._-]{0,47}$/;
++function check(value, message) {
++  if (!value) throw new TypeError(message);
++}
++function object(value) {
++  check(value !== null && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), "Expected plain object");
++}
++function keys(value, allowed) {
++  check(Object.keys(value).every((key) => allowed.includes(key)), "Unexpected field");
++}
++function text(value, maximum = 1024) {
++  check(typeof value === "string" && value.length <= maximum && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value), "Invalid text");
++}
++function finite(value) {
++  check(typeof value === "number" && Number.isFinite(value), "Expected finite number");
++}
++function choice(value, values) {
++  check(values.includes(value), "Unsupported value");
++}
++function owned(owner, id) {
++  check(typeof owner === "string" && OWNER_RE.test(owner) && typeof id === "string" && ID_RE.test(id) && id.startsWith(owner + ":"), "Invalid owner/namespace");
++}
++function serialized(value, maxBytes = 8192) {
++  let nodes = 0;
++  const visit = (v, depth) => {
++    check(++nodes <= 4096 && depth <= 10, "JSON complexity limit");
++    if (v === null || typeof v === "boolean") return;
++    if (typeof v === "string") {
++      text(v, 4096);
++      return;
++    }
++    if (typeof v === "number") {
++      finite(v);
++      return;
++    }
++    check(typeof v === "object", "Only JSON data is allowed");
++    if (Array.isArray(v)) {
++      check(v.length <= 256, "Array limit");
++      v.forEach((item) => visit(item, depth + 1));
++    } else {
++      object(v);
++      for (const key of Object.keys(v)) {
++        check(key.length <= 96 && !["__proto__", "constructor", "prototype"].includes(key) && !Object.getOwnPropertyDescriptor(v, key)?.get, "Unsafe JSON key");
++        visit(v[key], depth + 1);
++      }
++    }
++  };
++  visit(value, 0);
++  const result = JSON.stringify(value);
++  check(new TextEncoder().encode(result).length <= maxBytes, "Payload byte limit");
++  return result;
++}
++function clone(value, maximum = 8192) {
++  return JSON.parse(serialized(value, maximum));
++}
++function widgetDefinition(input) {
++  const d = clone(input);
++  object(d);
++  keys(d, ["id", "owner", "kind", "schemaVersion", "defaultPosition", "defaultVisible", "templateId"]);
++  owned(d.owner, d.id);
++  check(d.schemaVersion === 1, "Unsupported schemaVersion");
++  choice(d.kind, ["status", "progress", "text", "icon-list", "custom-template"]);
++  if (d.defaultPosition !== void 0) choice(d.defaultPosition, POSITIONS);
++  if (d.defaultVisible !== void 0) check(typeof d.defaultVisible === "boolean", "Invalid visibility");
++  if (d.kind === "custom-template") check(d.templateId === "core:status-v1", "Template is not bundled");
++  else check(d.templateId === void 0, "templateId only for custom-template");
++  return d;
++}
++function menuDefinition(input) {
++  const d = clone(input);
++  object(d);
++  keys(d, ["id", "owner", "title", "schemaVersion", "layoutId", "modal"]);
++  owned(d.owner, d.id);
++  text(d.title, 120);
++  check(d.title.trim() && d.schemaVersion === 1, "Invalid title/schemaVersion");
++  choice(d.layoutId, ["core:dialog-v1", "core:form-v1"]);
++  if (d.modal !== void 0) check(typeof d.modal === "boolean", "Invalid modal");
++  return d;
++}
++function widgetState(d, value, maxBytes = 8192) {
++  const s = clone(value, maxBytes);
++  object(s);
++  check(s.schemaVersion === d.schemaVersion, "State schema mismatch");
++  if (d.kind === "progress") {
++    keys(s, ["schemaVersion", "label", "value", "max"]);
++    text(s.label, 160);
++    finite(s.value);
++    finite(s.max);
++    check(s.max > 0 && s.value >= 0 && s.value <= s.max, "Invalid progress range");
++  } else if (d.kind === "icon-list") {
++    keys(s, ["schemaVersion", "items"]);
++    check(Array.isArray(s.items) && s.items.length <= 16, "Invalid items");
++    for (const item of s.items) {
++      object(item);
++      keys(item, ["label", "value", "tone"]);
++      text(item.label, 160);
++      scalar(item.value);
++      if (item.tone !== void 0) choice(item.tone, TONES);
++    }
++  } else {
++    keys(s, ["schemaVersion", "label", "text", "value", "tone"]);
++    if (s.label !== void 0) text(s.label, 160);
++    if (s.text !== void 0) text(s.text);
++    scalar(s.value);
++    if (s.tone !== void 0) choice(s.tone, TONES);
++    check(s.label !== void 0 || s.text !== void 0 || s.value !== void 0, "Empty widget");
++  }
++  return s;
++}
++function scalar(v) {
++  if (v !== void 0) {
++    if (typeof v === "number") finite(v);
++    else text(v, 160);
++  }
++}
++function menuState(d, value, maxBytes = 8192) {
++  const s = clone(value, maxBytes);
++  object(s);
++  keys(s, ["schemaVersion", "text", "fields", "actions"]);
++  check(s.schemaVersion === d.schemaVersion, "State schema mismatch");
++  if (s.text !== void 0) text(s.text, 2048);
++  check(Array.isArray(s.actions) && s.actions.length > 0 && s.actions.length <= 8, "Invalid menu actions");
++  const actionIds = /* @__PURE__ */ new Set();
++  for (const action of s.actions) {
++    object(action);
++    keys(action, ["id", "label", "tone"]);
++    text(action.label, 80);
++    check(typeof action.id === "string" && ACTION_RE.test(action.id) && action.id !== "core.close" && !actionIds.has(action.id), "Invalid/duplicate action");
++    actionIds.add(action.id);
++    if (action.tone !== void 0) choice(action.tone, TONES);
++  }
++  if (s.fields !== void 0) {
++    check(d.layoutId === "core:form-v1" && Array.isArray(s.fields) && s.fields.length <= 12, "Invalid form fields");
++    const ids = /* @__PURE__ */ new Set();
++    for (const f of s.fields) {
++      object(f);
++      keys(f, ["id", "label", "type", "required", "maxLength", "min", "max", "options", "value"]);
++      check(typeof f.id === "string" && ACTION_RE.test(f.id) && !["__proto__", "constructor", "prototype"].includes(f.id) && !ids.has(f.id), "Invalid/duplicate field");
++      ids.add(f.id);
++      text(f.label, 120);
++      choice(f.type, ["text", "number", "checkbox", "select"]);
++      if (f.required !== void 0) check(typeof f.required === "boolean", "Invalid required");
++      if (f.maxLength !== void 0) check(f.type === "text" && Number.isInteger(f.maxLength) && f.maxLength >= 1 && f.maxLength <= 512, "Invalid maxLength");
++      if (f.min !== void 0) {
++        check(f.type === "number", "min requires number");
++        finite(f.min);
++      }
++      if (f.max !== void 0) {
++        check(f.type === "number", "max requires number");
++        finite(f.max);
++      }
++      if (f.min !== void 0 && f.max !== void 0) check(f.min <= f.max, "Invalid range");
++      if (f.type === "select") {
++        check(Array.isArray(f.options) && f.options.length > 0 && f.options.length <= 24, "Invalid select options");
++        const values = /* @__PURE__ */ new Set();
++        for (const option of f.options) {
++          object(option);
++          keys(option, ["value", "label"]);
++          text(option.value, 80);
++          text(option.label, 120);
++          check(!values.has(option.value), "Duplicate option");
++          values.add(option.value);
++        }
++      } else check(f.options === void 0, "Unexpected options");
++      if (f.value !== void 0) fieldValue(f, f.value);
++    }
++  }
++  return s;
++}
++function fieldValue(field, value) {
++  if (field.type === "text") {
++    text(value, field.maxLength ?? 256);
++    if (field.required) check(value.trim().length > 0, "Required text");
++  }
++  if (field.type === "number") {
++    finite(value);
++    check((field.min === void 0 || value >= field.min) && (field.max === void 0 || value <= field.max), "Number outside range");
++  }
++  if (field.type === "checkbox") {
++    check(typeof value === "boolean" && (!field.required || value), "Invalid checkbox");
++  }
++  if (field.type === "select") check(field.options?.some((o) => o.value === value), "Invalid selection");
++}
++function validateFrame(value) {
++  const p = clone(value, 65536);
++  object(p);
++  keys(p, ["customPacketType", "protocolVersion", "apiVersion", "frontId", "sessionId", "sequence", "serverTime", "preferenceKey", "locale", "translations", "widgets", "menus", "notifications"]);
++  choice(p.customPacketType, [PREFIX + "snapshot", PREFIX + "update"]);
++  check(p.protocolVersion === 1 && p.apiVersion === 1, "Protocol/API mismatch");
++  choice(p.locale, ["de", "en"]);
++  object(p.translations);
++  p.translations = translations(p.translations);
++  check(typeof p.frontId === "string" && TOKEN_RE.test(p.frontId) && typeof p.sessionId === "string" && TOKEN_RE.test(p.sessionId), "Invalid session");
++  check(Number.isSafeInteger(p.sequence) && p.sequence > 0 && Number.isSafeInteger(p.serverTime), "Invalid sequence/time");
++  check(typeof p.preferenceKey === "string" && /^[a-f0-9]{32}$/.test(p.preferenceKey), "Invalid preference key");
++  check(Array.isArray(p.widgets) && p.widgets.length <= 40 && Array.isArray(p.menus) && p.menus.length <= 4 && Array.isArray(p.notifications) && p.notifications.length <= 8, "Frame item limit");
++  const ids = /* @__PURE__ */ new Set();
++  for (const w of p.widgets) {
++    object(w);
++    keys(w, ["definition", "state", "visible", "expiresAt"]);
++    w.definition = widgetDefinition(w.definition);
++    w.state = widgetState(w.definition, w.state);
++    check(!ids.has(w.definition.id) && typeof w.visible === "boolean" && Number.isSafeInteger(w.expiresAt), "Invalid widget view");
++    ids.add(w.definition.id);
++  }
++  for (const m of p.menus) {
++    object(m);
++    keys(m, ["definition", "state", "expiresAt"]);
++    m.definition = menuDefinition(m.definition);
++    m.state = menuState(m.definition, m.state);
++    check(!ids.has(m.definition.id) && Number.isSafeInteger(m.expiresAt), "Invalid menu view");
++    ids.add(m.definition.id);
++  }
++  const notices = /* @__PURE__ */ new Set();
++  for (const n of p.notifications) {
++    object(n);
++    keys(n, ["id", "message", "tone", "expiresAt"]);
++    text(n.id, 96);
++    text(n.message, 1024);
++    choice(n.tone, TONES);
++    check(Number.isSafeInteger(n.expiresAt) && !notices.has(n.id), "Invalid notification");
++    notices.add(n.id);
++  }
++  return p;
++}
++
++// client/model.ts
++var emptyPreferences = () => ({ scale: 100, widgets: {} });
++function readPreferences(storage, key) {
++  try {
++    const raw = storage?.getItem("skymp-ui.v1." + key);
++    if (!raw || raw.length > 65536) return emptyPreferences();
++    const p = JSON.parse(raw);
++    object(p);
++    object(p.widgets);
++    const result = emptyPreferences();
++    if (typeof p.scale === "number" && p.scale >= 75 && p.scale <= 150) result.scale = p.scale;
++    for (const [id, v] of Object.entries(p.widgets).slice(0, 160)) {
++      if (!v || typeof v !== "object" || Array.isArray(v) || !/^[a-z][a-z0-9-]{0,47}:[a-z][a-z0-9._-]{0,46}(?:#(?:[0-9]|1[0-5]))?$/.test(id)) continue;
++      const entry = v;
++      result.widgets[id] = {
++        ...POSITIONS.includes(entry.position) ? { position: entry.position } : {},
++        ...typeof entry.hidden === "boolean" ? { hidden: entry.hidden } : {},
++        ...typeof entry.x === "number" && Number.isFinite(entry.x) && entry.x >= 0 && entry.x <= 1 && typeof entry.y === "number" && Number.isFinite(entry.y) && entry.y >= 0 && entry.y <= 1 ? { x: entry.x, y: entry.y } : {},
++        ...typeof entry.scale === "number" && Number.isFinite(entry.scale) && entry.scale >= 75 && entry.scale <= 150 ? { scale: entry.scale } : {}
++      };
++    }
++    return result;
++  } catch {
++    return emptyPreferences();
++  }
++}
++var UiModel = class {
++  constructor(send2, clock = Date.now) {
++    this.send = send2;
++    this.clock = clock;
++    this.frame = null;
++    this.status = "disconnected";
++    this.allowed = true;
++    this.focused = false;
++    this.frontId = this.newId();
++    this.counter = 0;
++    this.offset = 0;
++    this.editorRequests = 0;
++    this.pending = /* @__PURE__ */ new Map();
++  }
++  newId() {
++    return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
++  }
++  announce() {
++    this.send(PREFIX + "frontReady", { protocolVersion: PROTOCOL_VERSION, frontId: this.frontId, editorVersion: 1 });
++  }
++  reset(status = "disconnected", rotate = false) {
++    this.frame = null;
++    this.status = status;
++    this.pending.clear();
++    this.counter = 0;
++    this.editorRequests = 0;
++    this.focused = false;
++    if (rotate) this.frontId = this.newId();
++  }
++  receive(value) {
++    try {
++      object(value);
++      if (value.customPacketType === PREFIX + "reset") {
++        this.reset(value.status === "connecting" ? "connecting" : "disconnected", true);
++        this.announce();
++        return true;
++      }
++      if (value.customPacketType === PREFIX + "interaction") {
++        if (typeof value.allowed !== "boolean") return false;
++        this.allowed = value.allowed;
++        return true;
++      }
++      if (value.customPacketType === PREFIX + "status") {
++        this.reset(typeof value.status === "string" ? value.status : "unavailable");
++        return true;
++      }
++      if (value.customPacketType === PREFIX + "edit") {
++        if (!this.frame || value.protocolVersion !== PROTOCOL_VERSION || value.sessionId !== this.frame.sessionId || value.frontId !== this.frontId) return false;
++        this.editorRequests++;
++        return true;
++      }
++      if (value.customPacketType === PREFIX + "ack") {
++        if (!this.frame || value.sessionId !== this.frame.sessionId || value.frontId !== this.frontId || !TOKEN_RE.test(this.frontId)) return false;
++        const p = this.pending.get(value.requestId);
++        if (p && (!p.close || value.accepted !== true)) this.pending.delete(value.requestId);
++        return true;
++      }
++      const next = validateFrame(value);
++      if (next.frontId !== this.frontId) return false;
++      if (!this.frame && next.customPacketType !== PREFIX + "snapshot") return false;
++      if (this.frame && (this.frame.sessionId !== next.sessionId || next.sequence <= this.frame.sequence)) return false;
++      this.frame = next;
++      this.status = "ready";
++      this.offset = next.serverTime - this.clock();
++      for (const [id, pending] of this.pending) if (!next.menus.some((m) => m.definition.id === pending.id) || this.clock() - pending.at >= 5e3) this.pending.delete(id);
++      return true;
++    } catch {
++      this.reset("invalid-packet");
++      return false;
++    }
++  }
++  serverNow() {
++    return this.clock() + this.offset;
++  }
++  visibleMenus() {
++    return this.allowed && this.frame ? this.frame.menus.filter((m) => m.expiresAt > this.serverNow() && ![...this.pending.values()].some((p) => p.close && p.id === m.definition.id)) : [];
++  }
++  action(id, actionId, payload, close = false) {
++    if (!this.frame || !this.allowed || this.counter >= 4294967295 || this.pending.size >= 16 || [...this.pending.values()].some((p) => p.id === id)) return false;
++    const requestId = this.frame.sessionId + "_" + ++this.counter;
++    this.pending.set(requestId, { id, close, at: this.clock() });
++    this.send(PREFIX + "action", { protocolVersion: PROTOCOL_VERSION, widgetId: id, actionId, requestId, payload });
++    return true;
++  }
++  dismiss() {
++    const m = this.visibleMenus().slice(-1)[0];
++    if (m) return this.action(m.definition.id, "core.close", {}, true);
++    return false;
++  }
++  tick() {
++    for (const [id, p] of this.pending) if (this.clock() - p.at >= 5e3) this.pending.delete(id);
++  }
++};
++function createDismissGuard(clock = Date.now) {
++  let previous = null;
++  return (source) => {
++    const at = clock();
++    if (previous && previous.source !== source && at - previous.at < 150) {
++      previous = null;
++      return false;
++    }
++    previous = { source, at };
++    return true;
++  };
++}
++
++// client/locales/de.json
++var de_default2 = {
++  edit: "UI bearbeiten",
++  hint: "Element ziehen \xB7 Ecke zum Skalieren \xB7 Pfeiltasten f\xFCr Feinkorrektur",
++  selectElement: "Element ausw\xE4hlen",
++  elementScale: "Elementgr\xF6\xDFe",
++  globalScale: "Gesamte UI",
++  save: "Speichern & schlie\xDFen",
++  cancel: "Abbrechen",
++  reset: "Alles zur\xFCcksetzen",
++  resetElement: "Element zur\xFCcksetzen",
++  move: "Verschieben",
++  resize: "Gr\xF6\xDFe \xE4ndern",
++  noElements: "Noch keine HUD-Elemente vom Server empfangen.",
++  selection: "Ausgew\xE4hltes Element",
++  localOnly: "Dieses Layout wird nur auf diesem Client gespeichert.",
++  emptySelection: "Klicke auf ein HUD-Element oder w\xE4hle es hier aus.",
++  hidden: "Ausgeblendet",
++  notSaved: "Speichern nicht m\xF6glich. Das Layout gilt f\xFCr diese Sitzung.",
++  saved: "Layout gespeichert",
++  keyboard: "Pfeile: 1 px \xB7 Umschalt: 10 px \xB7 + / \u2212: Gr\xF6\xDFe \xB7 Esc: Abbrechen"
++};
++
++// client/locales/en.json
++var en_default2 = {
++  edit: "Edit UI",
++  hint: "Drag to move \xB7 Resize from the corner \xB7 Arrow keys for precision",
++  selectElement: "Select element",
++  elementScale: "Element size",
++  globalScale: "Entire UI",
++  save: "Save & close",
++  cancel: "Cancel",
++  reset: "Reset all",
++  resetElement: "Reset element",
++  move: "Move",
++  resize: "Resize",
++  noElements: "No HUD elements received from the server yet.",
++  selection: "Selected element",
++  localOnly: "This layout is saved on this client only.",
++  emptySelection: "Click a HUD element or select it here.",
++  hidden: "Hidden",
++  notSaved: "Storage unavailable. The layout applies to this session.",
++  saved: "Layout saved",
++  keyboard: "Arrows: 1 px \xB7 Shift: 10 px \xB7 + / \u2212: size \xB7 Esc: Cancel"
++};
++
++// client/editor-localization.ts
++var editorTranslations = { de: de_default2, en: en_default2 };
++
++// client/layout.ts
++var clamp = (value, min, max) => Math.min(Math.max(value, min), max);
++var MARGIN = 16;
++var GAP = 12;
++function hudElements(widgets) {
++  return widgets.flatMap((widget) => widget.definition.kind === "icon-list" ? widget.state.items.map((item, index) => ({ key: widget.definition.id + "#" + index, label: item.label, widget, item, index })) : [{ key: widget.definition.id, label: "label" in widget.state && widget.state.label || widget.definition.id, widget }]);
++}
++function elementPreference(preferences, element) {
++  const group = preferences.widgets[element.widget.definition.id] ?? {};
++  return { ...group, ...preferences.widgets[element.key], hidden: preferences.widgets[element.key]?.hidden ?? group.hidden };
++}
++function shortLabel(label) {
++  return label.split(" (")[0];
++}
++function meterValue(value) {
++  if (typeof value !== "string") return null;
++  const match = /^(\d{1,4}(?:[.,]\d{1,2})?)\s*\/\s*(\d{1,4}(?:[.,]\d{1,2})?)(?:\s*·\s*(.{0,160}))?$/.exec(value.trim());
++  if (!match) return null;
++  const current = Number(match[1].replace(",", ".")), max = Number(match[2].replace(",", "."));
++  if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0 || current > max) return null;
++  return { value: current, max, percent: current / max * 100, text: match[1], status: match[3] ?? "" };
++}
++function normalizedPoint(left, top, size, viewport) {
++  return {
++    x: clamp((left - MARGIN) / Math.max(1, viewport.width - size.width - 2 * MARGIN), 0, 1),
++    y: clamp((top - MARGIN) / Math.max(1, viewport.height - size.height - 2 * MARGIN), 0, 1)
++  };
++}
++function placeElements(elements, preferences, viewport, measured = {}) {
++  const result = {}, offsets = { "top-left": 12, "top-right": 12, "bottom-left": 16, "bottom-right": 16 };
++  const groups = [];
++  for (const element of elements) {
++    const previous = groups[groups.length - 1];
++    if (element.item && previous?.[0].widget.definition.id === element.widget.definition.id) previous.push(element);
++    else groups.push([element]);
++  }
++  for (const group of groups) {
++    const rows = {};
++    for (const element of group) {
++      const preference = elementPreference(preferences, element), position = preference.position ?? element.widget.definition.defaultPosition ?? "top-right";
++      const intrinsic = measured[element.key] ?? { width: element.item ? 112 : 300, height: element.item ? 150 : 120 };
++      const requestedScale = preferences.scale * (preference.scale ?? 100) / 1e4;
++      const scale = Math.min(requestedScale, Math.max(0.1, (viewport.width - 2 * MARGIN) / intrinsic.width), Math.max(0.1, (viewport.height - 2 * MARGIN) / intrinsic.height));
++      const width = intrinsic.width * scale, height = intrinsic.height * scale;
++      const flowWidth = Math.min(intrinsic.width * preferences.scale / 100, viewport.width - 2 * MARGIN);
++      const flowHeight = Math.min(intrinsic.height * preferences.scale / 100, viewport.height - 2 * MARGIN);
++      const flowPosition = preferences.widgets[element.widget.definition.id]?.position ?? element.widget.definition.defaultPosition ?? "top-right";
++      const row = rows[flowPosition] ?? (rows[flowPosition] = { x: 0, y: offsets[flowPosition], height: 0 });
++      if (row.x > 0 && row.x + flowWidth > viewport.width - 2 * MARGIN) {
++        row.x = 0;
++        row.y += row.height + GAP;
++        row.height = 0;
++      }
++      let left = position.endsWith("right") ? viewport.width - MARGIN - width - row.x : MARGIN + row.x;
++      let top = position.startsWith("bottom") ? viewport.height - MARGIN - height - row.y : MARGIN + row.y;
++      if (preference.x !== void 0 && preference.y !== void 0) {
++        left = MARGIN + preference.x * Math.max(0, viewport.width - width - 2 * MARGIN);
++        top = MARGIN + preference.y * Math.max(0, viewport.height - height - 2 * MARGIN);
++      }
++      result[element.key] = {
++        left: clamp(left, MARGIN, Math.max(MARGIN, viewport.width - width - MARGIN)),
++        top: clamp(top, MARGIN, Math.max(MARGIN, viewport.height - height - MARGIN)),
++        width,
++        height,
++        scale
++      };
++      row.height = Math.max(row.height, flowHeight);
++      if (element.item) row.x += flowWidth + GAP;
++      else {
++        row.y += flowHeight + GAP;
++        row.height = 0;
++      }
++    }
++    for (const [position, row] of Object.entries(rows)) offsets[position] = row.y + row.height + GAP;
++  }
++  return result;
++}
++
++// client/hud.tsx
++import React, { useEffect, useRef } from "react";
++var RUNES = ["M43 26v48m0-34 18-12M43 53l18-12M43 66 30 55", "M39 73V27l23 17M39 41l15 10", "M50 25 31 49l19 24 19-24-19-24M31 49v25m38-25v25"];
++function Widget({ element }) {
++  const s = element.widget.state;
++  if (element.item) {
++    const item = element.item, meter = meterValue(item.value);
++    return /* @__PURE__ */ React.createElement("div", { className: "ui-status ui-sigil-" + element.index % 3 + " tone-" + (item.tone ?? "info"), title: item.label + ": " + (item.value ?? "") }, /* @__PURE__ */ React.createElement("div", { className: "ui-medallion" }, /* @__PURE__ */ React.createElement("svg", { className: "ui-meter-ring", viewBox: "0 0 100 100", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("circle", { className: "ui-meter-bezel", cx: "50", cy: "50", r: "48" }), /* @__PURE__ */ React.createElement("path", { className: "ui-meter-engraving", d: "M50 0l4 5-4 5-4-5zM50 90l4 5-4 5-4-5zM0 50l5-4 5 4-5 4zM90 50l5-4 5 4-5 4z" }), /* @__PURE__ */ React.createElement("circle", { className: "ui-meter-track", cx: "50", cy: "50", r: "41" }), meter && /* @__PURE__ */ React.createElement("circle", { className: "ui-meter-fill", cx: "50", cy: "50", r: "41", pathLength: "100", strokeDasharray: meter.percent + " 100", transform: "rotate(-90 50 50)" })), /* @__PURE__ */ React.createElement("svg", { className: "ui-rune", viewBox: "0 0 100 100", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("path", { d: RUNES[element.index % RUNES.length] })), meter && /* @__PURE__ */ React.createElement("span", { className: "ui-meter-number" }, meter.text, /* @__PURE__ */ React.createElement("small", null, " / ", meter.max))), /* @__PURE__ */ React.createElement("span", { className: "ui-status-label" }, shortLabel(item.label)), /* @__PURE__ */ React.createElement("span", { className: "ui-status-detail" }, meter ? meter.status : item.value), meter && /* @__PURE__ */ React.createElement("progress", { className: "ui-sr-only", "aria-label": item.label, value: meter.value, max: meter.max }));
++  }
++  if (element.widget.definition.kind === "progress") return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", null, s.label), /* @__PURE__ */ React.createElement("progress", { value: s.value, max: s.max, "aria-label": s.label }), /* @__PURE__ */ React.createElement("span", null, s.value, " / ", s.max));
++  return /* @__PURE__ */ React.createElement("div", { className: "tone-" + (s.tone ?? "info") }, s.label && /* @__PURE__ */ React.createElement("strong", null, s.label), s.value !== void 0 && /* @__PURE__ */ React.createElement("span", { className: "ui-value" }, s.value), s.text && /* @__PURE__ */ React.createElement("p", null, s.text));
++}
++function HudItem({ element, placement, preference, viewport, editing, selected, hidden, t, onSelect, onChange, onMeasure }) {
++  const content = useRef(null);
++  const gesture = useRef(null);
++  useEffect(() => {
++    const node = content.current;
++    if (!node) return;
++    const measure = () => onMeasure(element.key, { width: node.offsetWidth, height: node.offsetHeight });
++    measure();
++    if (typeof ResizeObserver === "undefined") return;
++    const observer = new ResizeObserver(measure);
++    observer.observe(node);
++    return () => observer.disconnect();
++  }, [element.key, onMeasure]);
++  return /* @__PURE__ */ React.createElement(
++    "section",
++    {
++      className: "ui-layout-item" + (editing ? " ui-editable" : "") + (selected ? " ui-selected" : "") + (hidden ? " ui-hidden-preview" : ""),
++      "data-widget-id": element.widget.definition.id,
++      "data-element-key": element.key,
++      role: editing ? "button" : "group",
++      "aria-label": (editing ? t.move + ": " : "") + element.label,
++      "aria-pressed": editing ? selected : void 0,
++      tabIndex: editing ? 0 : void 0,
++      style: { left: placement.left, top: placement.top, width: placement.width, height: placement.height },
++      onFocus: () => {
++        if (editing) onSelect(element.key);
++      },
++      onPointerDown: (e) => {
++        if (!editing || e.button !== 0) return;
++        e.preventDefault();
++        e.currentTarget.focus();
++        onSelect(element.key);
++        const resize = e.target.closest("[data-resize]") !== null;
++        gesture.current = { x: e.clientX, y: e.clientY, left: placement.left, top: placement.top, size: placement, scale: preference.scale ?? 100, resize };
++        e.currentTarget.setPointerCapture(e.pointerId);
++      },
++      onPointerMove: (e) => {
++        const start = gesture.current;
++        if (!editing || !start) return;
++        if (start.resize) {
++          const factor = Math.max((start.size.width + e.clientX - start.x) / start.size.width, (start.size.height + e.clientY - start.y) / start.size.height);
++          const scale = clamp(Math.round(start.scale * factor), 75, 150), ratio = scale / start.scale;
++          onChange(element.key, { scale, ...normalizedPoint(start.left, start.top, { width: start.size.width * ratio, height: start.size.height * ratio }, viewport) });
++        } else onChange(element.key, normalizedPoint(start.left + e.clientX - start.x, start.top + e.clientY - start.y, start.size, viewport));
++      },
++      onPointerUp: (e) => {
++        gesture.current = null;
++        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
++      },
++      onPointerCancel: () => {
++        gesture.current = null;
++      },
++      onLostPointerCapture: () => {
++        gesture.current = null;
++      },
++      onKeyDown: (e) => {
++        if (!editing) return;
++        const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
++        if (delta[e.key]) {
++          e.preventDefault();
++          e.stopPropagation();
++          const [x, y] = delta[e.key], step = e.shiftKey ? 10 : 1;
++          onChange(element.key, normalizedPoint(placement.left + x * step, placement.top + y * step, placement, viewport));
++        } else if (["+", "=", "-", "_"].includes(e.key)) {
++          e.preventDefault();
++          onChange(element.key, { scale: clamp((preference.scale ?? 100) + (["+", "="].includes(e.key) ? 5 : -5), 75, 150) });
++        } else if (e.key === "Enter" || e.key === " ") {
++          e.preventDefault();
++          onSelect(element.key);
++        }
++      }
++    },
++    /* @__PURE__ */ React.createElement("div", { ref: content, className: element.item ? "ui-item-content ui-meter-content" : "ui-item-content ui-panel ui-widget", style: { transform: "scale(" + placement.scale + ")" } }, /* @__PURE__ */ React.createElement(Widget, { element })),
++    editing && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "ui-edit-label" }, shortLabel(element.label), hidden ? " \xB7 " + t.hidden : ""), /* @__PURE__ */ React.createElement("span", { className: "ui-resize-handle", "data-resize": "true", title: t.resize, "aria-hidden": "true" }, "\u231F"))
++  );
++}
++
++// client/host.tsx
++var send = (type, data) => {
++  try {
++    window.skyrimPlatform?.sendMessage?.(type, data);
++  } catch {
++  }
++};
++function Menu({ view, model, changed, t }) {
++  const ref = useRef2(null);
++  const [values, setValues] = useState(() => Object.fromEntries((view.state.fields ?? []).map((f) => [f.id, f.value ?? (f.type === "checkbox" ? false : f.type === "number" ? f.min ?? 0 : f.type === "select" ? f.options[0].value : "")])));
++  const waiting = [...model.pending.values()].some((p) => p.id === view.definition.id);
++  useEffect2(() => {
++    ref.current?.querySelector("input, select, button")?.focus();
++  }, []);
++  function field(f) {
++    const shared = { id: `ui-field-${f.id}`, disabled: waiting, required: f.required, "aria-label": f.label };
++    if (f.type === "select") return /* @__PURE__ */ React2.createElement("select", { ...shared, value: String(values[f.id]), onChange: (e) => setValues({ ...values, [f.id]: e.target.value }) }, f.options.map((o) => /* @__PURE__ */ React2.createElement("option", { key: o.value, value: o.value }, o.label)));
++    if (f.type === "checkbox") return /* @__PURE__ */ React2.createElement("input", { ...shared, type: "checkbox", checked: values[f.id] === true, onChange: (e) => setValues({ ...values, [f.id]: e.target.checked }) });
++    return /* @__PURE__ */ React2.createElement(
++      "input",
++      {
++        ...shared,
++        type: f.type,
++        value: values[f.id],
++        maxLength: f.maxLength ?? 256,
++        min: f.min,
++        max: f.max,
++        onChange: (e) => setValues({ ...values, [f.id]: f.type === "number" ? e.target.value === "" ? "" : Number(e.target.value) : e.target.value })
++      }
++    );
++  }
++  return /* @__PURE__ */ React2.createElement("div", { className: view.definition.modal === false ? "ui-menu-panel" : "ui-modal-shade" }, /* @__PURE__ */ React2.createElement(
++    "div",
++    {
++      className: "ui-panel ui-menu",
++      ref,
++      role: "dialog",
++      "aria-modal": view.definition.modal !== false,
++      "aria-label": view.definition.title,
++      onKeyDown: (event) => {
++        if (event.key === "Tab") {
++          const items = [...ref.current?.querySelectorAll("input:not(:disabled), select:not(:disabled), button:not(:disabled)") ?? []];
++          const first = items[0], last = items[items.length - 1];
++          if (event.shiftKey && document.activeElement === first) {
++            event.preventDefault();
++            last?.focus();
++          }
++          if (!event.shiftKey && document.activeElement === last) {
++            event.preventDefault();
++            first?.focus();
++          }
++        }
++      }
++    },
++    /* @__PURE__ */ React2.createElement("h2", null, view.definition.title),
++    view.state.text && /* @__PURE__ */ React2.createElement("p", null, view.state.text),
++    /* @__PURE__ */ React2.createElement("form", { onSubmit: (event) => {
++      event.preventDefault();
++    } }, (view.state.fields ?? []).map((f) => /* @__PURE__ */ React2.createElement("label", { className: "ui-field", key: f.id, htmlFor: "ui-field-" + f.id }, f.label, field(f))), /* @__PURE__ */ React2.createElement("div", { className: "ui-actions" }, view.state.actions.map((action) => /* @__PURE__ */ React2.createElement(
++      "button",
++      {
++        type: "button",
++        key: action.id,
++        disabled: waiting,
++        className: "tone-" + (action.tone ?? "info"),
++        onClick: (e) => {
++          if (e.currentTarget.form?.reportValidity() === false) return;
++          model.action(view.definition.id, action.id, { values });
++          changed();
++        }
++      },
++      action.label
++    )), /* @__PURE__ */ React2.createElement("button", { type: "button", onClick: () => {
++      model.dismiss();
++      changed();
++    } }, t.close))),
++    waiting && /* @__PURE__ */ React2.createElement("p", { role: "status" }, t.pending)
++  ));
++}
++function Host() {
++  const modelRef = useRef2();
++  if (!modelRef.current) modelRef.current = new UiModel(send);
++  const model = modelRef.current;
++  const [, render] = useState(0);
++  const changed = () => render((n) => n + 1);
++  const [preferences, setPreferences] = useState(emptyPreferences);
++  const preferencesRef = useRef2(preferences);
++  preferencesRef.current = preferences;
++  const [editing, setEditing] = useState(false), editingRef = useRef2(false), beforeEdit = useRef2(preferences);
++  const [selected, setSelected] = useState(""), [language, setLanguage] = useState(null);
++  const [feedback, setFeedback] = useState("");
++  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
++  const [measured, setMeasured] = useState({});
++  const onMeasure = useCallback((key, size) => setMeasured((previous) => previous[key]?.width === size.width && previous[key]?.height === size.height ? previous : { ...previous, [key]: size }), []);
++  const preferenceKey = model.frame?.preferenceKey;
++  const menus = model.visibleMenus(), top = menus[menus.length - 1];
++  const wantsFocus = model.status === "ready" && model.allowed && (editing || menus.length > 0);
++  const effectiveLanguage = language ?? model.frame?.locale ?? "de";
++  const t = model.frame?.translations[effectiveLanguage] ?? bundledTranslations[effectiveLanguage];
++  const et = editorTranslations[effectiveLanguage];
++  const openEditor = () => {
++    if (!model.frame || editingRef.current) return;
++    beforeEdit.current = preferencesRef.current;
++    editingRef.current = true;
++    setEditing(true);
++    setFeedback("");
++  };
++  const finishEditor = (save) => {
++    if (save) {
++      let persisted = false;
++      try {
++        if (preferenceKey) {
++          window.localStorage.setItem("skymp-ui.v1." + preferenceKey, JSON.stringify(preferencesRef.current));
++          persisted = true;
++        }
++      } catch {
++      }
++      setFeedback(persisted ? et.saved : et.notSaved);
++    } else setPreferences(beforeEdit.current);
++    editingRef.current = false;
++    setEditing(false);
++  };
++  const controls = useRef2({ openEditor, finishEditor });
++  controls.current = { openEditor, finishEditor };
++  useEffect2(() => {
++    const receive = (event) => {
++      const requests = model.editorRequests;
++      model.receive(event.detail);
++      if (!model.frame) {
++        editingRef.current = false;
++        setEditing(false);
++        setSelected("");
++        setMeasured({});
++        setFeedback("");
++      } else if (model.editorRequests > requests) controls.current.openEditor();
++      changed();
++    };
++    const probe = () => model.announce();
++    const focused = () => {
++      model.focused = true;
++      changed();
++    };
++    const unfocused = () => {
++      model.focused = false;
++      changed();
++    };
++    const acceptDismiss = createDismissGuard();
++    const dismiss = (source) => {
++      if (!acceptDismiss(source)) return;
++      if (editingRef.current) controls.current.finishEditor(false);
++      else model.dismiss();
++      changed();
++    };
++    const nativeDismiss = () => dismiss("native");
++    const key = (event) => {
++      if (event.key === "Escape" && (model.visibleMenus().length || editingRef.current)) {
++        event.preventDefault();
++        event.stopImmediatePropagation();
++        if (!event.repeat) dismiss("dom");
++      }
++      if (event.key === "Tab" && editingRef.current) {
++        const items = [...document.querySelectorAll(".skymp-ui-core .ui-editable, .ui-editor-panel input:not(:disabled), .ui-editor-panel select:not(:disabled), .ui-editor-panel button:not(:disabled)")];
++        if (event.shiftKey && document.activeElement === items[0]) {
++          event.preventDefault();
++          items[items.length - 1]?.focus();
++        } else if (!event.shiftKey && document.activeElement === items[items.length - 1]) {
++          event.preventDefault();
++          items[0]?.focus();
++        }
++      }
++    };
++    const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
++    window.addEventListener("skympUi:packet", receive);
++    window.addEventListener("skympUi:probe", probe);
++    window.addEventListener("skympUi:dismiss", nativeDismiss);
++    window.addEventListener("keydown", key, true);
++    window.addEventListener("resize", resize);
++    window.addEventListener("skymp5-client:browserFocused", focused);
++    window.addEventListener("skymp5-client:browserUnfocused", unfocused);
++    model.announce();
++    const tick = setInterval(() => {
++      model.tick();
++      changed();
++    }, 250);
++    return () => {
++      clearInterval(tick);
++      window.removeEventListener("skympUi:packet", receive);
++      window.removeEventListener("skympUi:probe", probe);
++      window.removeEventListener("skympUi:dismiss", nativeDismiss);
++      window.removeEventListener("keydown", key, true);
++      window.removeEventListener("resize", resize);
++      window.removeEventListener("skymp5-client:browserFocused", focused);
++      window.removeEventListener("skymp5-client:browserUnfocused", unfocused);
++      send("skympUi:focus", false);
++    };
++  }, [model]);
++  useEffect2(() => {
++    send("skympUi:focus", wantsFocus);
++  }, [wantsFocus, model.frame?.sessionId]);
++  useEffect2(() => {
++    editingRef.current = false;
++    setEditing(false);
++    setLanguage(null);
++    if (!preferenceKey) {
++      setPreferences(emptyPreferences());
++      return;
++    }
++    let storage = null;
++    try {
++      storage = window.localStorage;
++    } catch {
++    }
++    setPreferences(readPreferences(storage, preferenceKey));
++  }, [preferenceKey, model.frame?.sessionId]);
++  const registryKeys = model.frame?.widgets.map((widget) => widget.definition.id + ":" + (widget.definition.kind === "icon-list" ? widget.state.items.length : 1)).join("|");
++  useEffect2(() => {
++    const active = new Set(hudElements(model.frame?.widgets ?? []).map((element) => element.key));
++    setMeasured((previous) => Object.keys(previous).every((key) => active.has(key)) ? previous : Object.fromEntries(Object.entries(previous).filter(([key]) => active.has(key))));
++  }, [registryKeys]);
++  useEffect2(() => {
++    if (!feedback) return;
++    const timer = setTimeout(() => setFeedback(""), 5e3);
++    return () => clearTimeout(timer);
++  }, [feedback]);
++  function updateElement(key, next) {
++    setPreferences((previous) => {
++      const widgets = { ...previous.widgets, [key]: { ...previous.widgets[key], ...next } };
++      let excess = Math.max(0, Object.keys(widgets).length - 160);
++      for (const old of Object.keys(widgets)) if (excess > 0 && old !== key) {
++        delete widgets[old];
++        excess--;
++      }
++      return { ...previous, widgets };
++    });
++  }
++  if (!model.frame || !model.allowed) return null;
++  const elements = hudElements(model.frame.widgets.filter((widget) => widget.visible && widget.expiresAt > model.serverNow()));
++  const placements = placeElements(elements, preferences, viewport, measured);
++  const selection = elements.find((element) => element.key === selected), current = selection ? elementPreference(preferences, selection) : null;
++  return /* @__PURE__ */ React2.createElement("div", { className: "skymp-ui-core" + (editing ? " ui-edit-mode" : ""), "data-ui-protocol": "1", style: { "--ui-scale": preferences.scale / 100 } }, editing && /* @__PURE__ */ React2.createElement("div", { className: "ui-editor-grid", "aria-hidden": "true" }), elements.map((element) => {
++    const pref = elementPreference(preferences, element);
++    if (pref.hidden && !editing) return null;
++    return /* @__PURE__ */ React2.createElement(
++      HudItem,
++      {
++        key: element.key,
++        element,
++        placement: placements[element.key],
++        preference: pref,
++        viewport,
++        editing,
++        selected: editing && selected === element.key,
++        hidden: !!pref.hidden,
++        t: et,
++        onSelect: setSelected,
++        onChange: updateElement,
++        onMeasure
++      }
++    );
++  }), /* @__PURE__ */ React2.createElement("div", { className: "ui-notifications", role: "log", "aria-live": "polite" }, model.frame.notifications.filter((n) => n.expiresAt > model.serverNow()).slice(-4).map((n) => /* @__PURE__ */ React2.createElement("div", { key: n.id, className: "ui-panel ui-notice tone-" + n.tone }, /* @__PURE__ */ React2.createElement("strong", null, t[n.tone]), " ", n.message))), !editing && top && /* @__PURE__ */ React2.createElement(Menu, { key: top.definition.id + ":" + top.expiresAt, view: top, model, changed, t }), model.focused && !editing && /* @__PURE__ */ React2.createElement("button", { className: "ui-display-button", type: "button", onClick: openEditor }, t.display), editing && /* @__PURE__ */ React2.createElement("aside", { className: "ui-panel ui-editor-panel", role: "dialog", "aria-modal": "false", "aria-label": et.edit }, /* @__PURE__ */ React2.createElement("span", { className: "ui-editor-eyebrow" }, "SKYMP \xB7 HUD"), /* @__PURE__ */ React2.createElement("h2", null, et.edit), /* @__PURE__ */ React2.createElement("p", { className: "ui-editor-hint" }, et.hint), /* @__PURE__ */ React2.createElement("div", { className: "ui-editor-scroll" }, /* @__PURE__ */ React2.createElement("label", { className: "ui-field" }, et.selectElement, /* @__PURE__ */ React2.createElement("select", { autoFocus: true, "aria-label": et.selectElement, value: selection?.key ?? "", onChange: (event) => setSelected(event.target.value) }, /* @__PURE__ */ React2.createElement("option", { value: "" }, "\u2014"), elements.map((element) => /* @__PURE__ */ React2.createElement("option", { key: element.key, value: element.key }, shortLabel(element.label))))), !elements.length && /* @__PURE__ */ React2.createElement("p", { role: "status" }, et.noElements), selection && current ? /* @__PURE__ */ React2.createElement("fieldset", null, /* @__PURE__ */ React2.createElement("legend", null, shortLabel(selection.label)), /* @__PURE__ */ React2.createElement("label", { className: "ui-field" }, et.elementScale, " ", /* @__PURE__ */ React2.createElement("output", null, current.scale ?? 100, "%"), /* @__PURE__ */ React2.createElement("input", { type: "range", min: "75", max: "150", step: "1", "aria-label": et.elementScale, value: current.scale ?? 100, onChange: (event) => updateElement(selection.key, { scale: Number(event.target.value) }) })), /* @__PURE__ */ React2.createElement("label", { className: "ui-checkbox" }, /* @__PURE__ */ React2.createElement("input", { type: "checkbox", checked: !current.hidden, onChange: (event) => updateElement(selection.key, { hidden: !event.target.checked }) }), t.visible), /* @__PURE__ */ React2.createElement("label", { className: "ui-field" }, t.position, /* @__PURE__ */ React2.createElement("select", { "aria-label": t.position + " " + selection.key, value: current.position ?? selection.widget.definition.defaultPosition ?? "top-right", onChange: (event) => {
++    updateElement(selection.key, { position: event.target.value, x: void 0, y: void 0 });
++  } }, POSITIONS.map((position) => /* @__PURE__ */ React2.createElement("option", { key: position, value: position }, t[position])))), /* @__PURE__ */ React2.createElement("button", { type: "button", onClick: () => setPreferences((previous) => {
++    const widgets = { ...previous.widgets };
++    delete widgets[selection.key];
++    return { ...previous, widgets };
++  }) }, et.resetElement)) : /* @__PURE__ */ React2.createElement("p", { className: "ui-editor-hint" }, et.emptySelection), /* @__PURE__ */ React2.createElement("label", { className: "ui-field" }, et.globalScale, " ", /* @__PURE__ */ React2.createElement("output", null, preferences.scale, "%"), /* @__PURE__ */ React2.createElement("input", { "aria-label": t.scale, type: "range", min: "75", max: "150", step: "5", value: preferences.scale, onChange: (event) => setPreferences((previous) => ({ ...previous, scale: Number(event.target.value) })) })), /* @__PURE__ */ React2.createElement("label", { className: "ui-field" }, t.language, /* @__PURE__ */ React2.createElement("select", { "aria-label": t.language, value: effectiveLanguage, onChange: (event) => setLanguage(event.target.value) }, /* @__PURE__ */ React2.createElement("option", { value: "de" }, "Deutsch"), /* @__PURE__ */ React2.createElement("option", { value: "en" }, "English"))), /* @__PURE__ */ React2.createElement("p", { className: "ui-editor-keyboard" }, et.keyboard), /* @__PURE__ */ React2.createElement("p", { className: "ui-editor-hint" }, et.localOnly)), /* @__PURE__ */ React2.createElement("div", { className: "ui-actions" }, /* @__PURE__ */ React2.createElement("button", { type: "button", className: "ui-primary", onClick: () => finishEditor(true) }, et.save), /* @__PURE__ */ React2.createElement("button", { type: "button", onClick: () => finishEditor(false) }, et.cancel), /* @__PURE__ */ React2.createElement("button", { type: "button", onClick: () => setPreferences(emptyPreferences()) }, et.reset))), feedback && /* @__PURE__ */ React2.createElement("p", { className: "ui-layout-feedback ui-panel", role: "status" }, feedback));
++}
++var HostBoundary = class extends React2.Component {
++  constructor() {
++    super(...arguments);
++    this.state = { failed: false };
++  }
++  static getDerivedStateFromError() {
++    return { failed: true };
++  }
++  componentDidCatch() {
++    send("skympUi:focus", false);
++  }
++  render() {
++    return this.state.failed ? null : this.props.children;
++  }
++};
++function UiCoreHost() {
++  return /* @__PURE__ */ React2.createElement(HostBoundary, null, /* @__PURE__ */ React2.createElement(Host, null));
++}
++export {
++  UiCoreHost
++};
+diff --git a/skymp5-front/src/index.js b/skymp5-front/src/index.js
+index 49117d4..27ca1d7 100644
+--- a/skymp5-front/src/index.js
++++ b/skymp5-front/src/index.js
+@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom';
+ import { Provider } from 'react-redux';
+ 
+ import App from './App';
++import { UiCoreHost } from './features/uiCore';
++import './features/uiCore/index.css';
+ import { AppErrorBoundary } from './components/AppErrorBoundary/AppErrorBoundary';
+ import './i18n';
+ import './main.scss';
+@@ -28,6 +30,7 @@ ReactDOM.render(
+     <AppErrorBoundary>
+       <Provider store={store}>
+         <App elem={window.skyrimPlatform.widgets.get()} />
++        <UiCoreHost />
+       </Provider>
+     </AppErrorBoundary>
+   </React.StrictMode>,

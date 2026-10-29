@@ -1,0 +1,22 @@
+const { test } = require('node:test'), assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), { spawnSync } = require('node:child_process');
+test('standalone entry loads operator config/locales through Game-CWD, not the temporary entry directory', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skymp-ui-entry-'));
+  const plugin = path.join(dir, 'Plugins/SkyMPUICore'), entry = path.join(dir, 'temporary-entry/index.cjs');
+  fs.mkdirSync(path.join(plugin, 'locales'), { recursive: true }); fs.mkdirSync(path.dirname(entry), { recursive: true });
+  fs.copyFileSync(path.resolve(__dirname, '../dist/index.cjs'), entry);
+  fs.writeFileSync(path.join(plugin, 'config.json'), JSON.stringify({ locale: 'en' }));
+  fs.writeFileSync(path.join(plugin, 'locales/en.json'), JSON.stringify({ close: 'Operator close text' }));
+  const code = `const assert=require('node:assert/strict'),{EventEmitter}=require('node:events');
+    const mp=new EventEmitter(),sent=[]; mp.isConnected=id=>id===0; mp.getUserActor=()=>101;
+    mp.getUserByActor=()=>0; mp.getUserGuid=()=>''; mp.sendCustomPacket=(id,raw)=>sent.push(JSON.parse(raw));
+    globalThis.mp=mp; require(${JSON.stringify(entry)});
+    mp.emit('customPacket',0,JSON.stringify({customPacketType:'skympUi:ready',protocolVersion:1,frontId:'front'}));
+    assert.equal(globalThis.skympUi.getStatus().locale,'en');
+    assert.equal(sent[0].translations.en.close,'Operator close text');
+    assert.equal(sent[0].translations.en.display,'Display');
+    assert.equal(Object.getOwnPropertyDescriptor(globalThis,'skympUi').writable,false);
+    globalThis[Symbol.for('skymp-ui-core.runtime.v1')].stop();`;
+  const result = spawnSync(process.execPath, ['-e', code], { cwd: dir, encoding: 'utf8', timeout: 15000 });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+});

@@ -1,0 +1,5 @@
+{
+  "name": "second-ui-consumer", "version": "1.0.0", "kind": "gamemode",
+  "displayName": "Second UI Consumer", "description": "Second independent UI owner for interop verification",
+  "main": "index.cjs", "optional": true
+}

@@ -1,0 +1,21 @@
+{
+  "edit": "Edit UI",
+  "hint": "Drag to move · Resize from the corner · Arrow keys for precision",
+  "selectElement": "Select element",
+  "elementScale": "Element size",
+  "globalScale": "Entire UI",
+  "save": "Save & close",
+  "cancel": "Cancel",
+  "reset": "Reset all",
+  "resetElement": "Reset element",
+  "move": "Move",
+  "resize": "Resize",
+  "noElements": "No HUD elements received from the server yet.",
+  "selection": "Selected element",
+  "localOnly": "This layout is saved on this client only.",
+  "emptySelection": "Click a HUD element or select it here.",
+  "hidden": "Hidden",
+  "notSaved": "Storage unavailable. The layout applies to this session.",
+  "saved": "Layout saved",
+  "keyboard": "Arrows: 1 px · Shift: 10 px · + / −: size · Esc: Cancel"
+}

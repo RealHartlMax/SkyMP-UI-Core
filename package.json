@@ -1,0 +1,29 @@
+{
+  "name": "skymp-ui-core",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Shared SkyMP in-game UI service and existing-CEF host",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "node tools/build.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "verify:fork": "node tools/verify-fork.cjs",
+    "verify:native": "node tools/verify-fork.cjs --native",
+    "integration:plan": "node tools/integrate-fork.cjs",
+    "integration:apply": "node tools/integrate-fork.cjs --apply",
+    "package": "npm run build && node tools/package.cjs",
+    "integration:stage": "node tools/prepare-editor-build.cjs",
+    "package:client": "node tools/package-client.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "18.3.28",
+    "esbuild": "0.28.2",
+    "react": "18.3.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "skymp-ui-core",
+  "version": "1.1.0",
+  "kind": "gamemode",
+  "displayName": "SkyMP UI Core",
+  "description": "Shared in-game UI host, widget and menu registry for SkyMP plugins",
+  "main": "index.cjs",
+  "optional": false,
+  "runtime": "Runtime/manifest.json"
+}
