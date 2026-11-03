@@ -21,13 +21,14 @@ export function elementPreference(preferences: Preferences, element: HudElement)
 export function shortLabel(label: string) { return label.split(' (')[0]; }
 // The existing API sends localized fractions as text. Only a complete fraction is
 // interpreted for the decorative fill; the server's original value stays accessible.
-export function meterValue(value: unknown): { value: number; max: number; percent: number; text: string; status: string } | null {
+// A short unit may follow the maximum ("8/40 m"); the maximum is always the full ring.
+export function meterValue(value: unknown): { value: number; max: number; percent: number; text: string; unit: string; status: string } | null {
   if (typeof value !== 'string') return null;
-  const match = /^(\d{1,4}(?:[.,]\d{1,2})?)\s*\/\s*(\d{1,4}(?:[.,]\d{1,2})?)(?:\s*·\s*(.{0,160}))?$/.exec(value.trim());
+  const match = /^(\d{1,4}(?:[.,]\d{1,2})?)\s*\/\s*(\d{1,4}(?:[.,]\d{1,2})?)(?:\s+(\p{L}{1,3}))?(?:\s*·\s*(.{0,160}))?$/u.exec(value.trim());
   if (!match) return null;
   const current = Number(match[1].replace(',', '.')), max = Number(match[2].replace(',', '.'));
   if (!Number.isFinite(current) || !Number.isFinite(max) || max <= 0 || current > max) return null;
-  return { value: current, max, percent: current / max * 100, text: match[1], status: match[3] ?? '' };
+  return { value: current, max, percent: current / max * 100, text: match[1], unit: match[3] ?? '', status: match[4] ?? '' };
 }
 export function normalizedPoint(left: number, top: number, size: Size, viewport: Size): Point {
   return { x: clamp((left - MARGIN) / Math.max(1, viewport.width - size.width - 2 * MARGIN), 0, 1),
@@ -45,7 +46,7 @@ export function placeElements(elements: HudElement[], preferences: Preferences, 
     const rows: Partial<Record<Position, { x: number; y: number; height: number }>> = {};
     for (const element of group) {
       const preference = elementPreference(preferences, element), position = preference.position ?? element.widget.definition.defaultPosition ?? 'top-right';
-      const intrinsic = measured[element.key] ?? { width: isMedallion(element) ? 112 : 300, height: isMedallion(element) ? 150 : 120 };
+      const intrinsic = measured[element.key] ?? { width: isMedallion(element) ? 112 : 300, height: isMedallion(element) ? 112 : 120 };
       const requestedScale = preferences.scale * (preference.scale ?? 100) / 10000;
       const scale = Math.min(requestedScale, Math.max(.1, (viewport.width - 2 * MARGIN) / intrinsic.width), Math.max(.1, (viewport.height - 2 * MARGIN) / intrinsic.height));
       const width = intrinsic.width * scale, height = intrinsic.height * scale;

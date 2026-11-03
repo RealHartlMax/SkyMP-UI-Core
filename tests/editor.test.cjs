@@ -25,9 +25,12 @@ test('generic icon-list becomes independent presentation elements without changi
   assert.equal(elementPreference(prefs, elements[0]).hidden, true); assert.equal(elementPreference(prefs, elements[1]).hidden, false);
 });
 test('localized fractions are decorative only and arbitrary text is never interpreted as markup or a percentage', () => {
-  assert.deepEqual(meterValue('85,3/100 · Gut'), { value: 85.3, max: 100, percent: 85.3, text: '85,3', status: 'Gut' });
+  assert.deepEqual(meterValue('85,3/100 · Gut'), { value: 85.3, max: 100, percent: 85.3, text: '85,3', unit: '', status: 'Gut' });
   assert.equal(meterValue('23.5/100 · Critical').percent, 23.5);
-  for (const value of ['<img src=x onerror=alert(1)>', '90%', '10/0', '-1/100', '101/100', 'Infinity/100', '12/100x', 50]) assert.equal(meterValue(value), null);
+  // The maximum is always the full ring; a short unit may follow it (voice range).
+  assert.deepEqual(meterValue('20/40 m'), { value: 20, max: 40, percent: 50, text: '20', unit: 'm', status: '' });
+  assert.equal(meterValue('8/40 m · Mikrofon stumm').status, 'Mikrofon stumm');
+  for (const value of ['<img src=x onerror=alert(1)>', '90%', '10/0', '-1/100', '101/100', 'Infinity/100', '12/100x', '8/40 meter', '8/40 <b>', '41/40 m', 50]) assert.equal(meterValue(value), null);
 });
 test('legacy preferences migrate and free positions/individual size are bounded presentation data', () => {
   const preferences = { scale: 125, widgets: { 'supply:status#1': { x: .4, y: .8, scale: 120, actorId: 99 },
@@ -106,6 +109,7 @@ test('status widgets use the same medallion size as list items and retain their 
   const defaults = placeElements(elements, { scale: 100, widgets: {} }, { width: 1920, height: 1080 });
   assert.equal(defaults[key].width, defaults['supply:status#0'].width);
   assert.equal(defaults[key].height, defaults['supply:status#0'].height);
+  assert.equal(defaults[key].height, defaults[key].width); // Seal only: no status text row can grow while speaking.
   assert.equal(meterValue(voice.state.value), null); // Metres do not invent a percentage fill.
   for (const viewport of [{ width: 1920, height: 1080 }, { width: 375, height: 667 }]) {
     const p = placeElements(elements, prefs, viewport)[key];

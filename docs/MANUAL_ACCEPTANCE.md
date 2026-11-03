@@ -1,5 +1,9 @@
 # Manuelle Zweiclient-Abnahme (offen)
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/MANUAL_ACCEPTANCE.md) · [English](i18n/en/docs/MANUAL_ACCEPTANCE.md) · [Русский](i18n/ru/docs/MANUAL_ACCEPTANCE.md)
+<!-- /plugin-doc-languages -->
+
 Diese Liste ist bewusst nicht als bestanden markiert. Die automatisierten nativen
 Bots/Browser sind in VALIDATION.md getrennt beschrieben. Zwei echte Skyrim-Clients
 mit identischem Runtimepaket und ein Testgameserver werden benötigt.
@@ -43,6 +47,7 @@ Definition of Done mit realem Spieler vollständig nachgewiesen.
 - [ ] Neue Server- und Client-/CEF-Pakete installieren, beide neu starten.
 - [ ] /UiEdit (auch /uiedit) über Enter öffnet nur den eigenen Editor.
 - [ ] Drei echte Metabolism-Werte erscheinen als Runenringe und ändern sich vom Server aus.
+- [ ] YACA-Reichweite: Ring = Reichweite/größte konfigurierte Reichweite (20 von 40 m = halber Ring); Sprechen und Mute ändern nur die Farbe, das Siegel bleibt an seiner Position.
 - [ ] Sättigung ziehen/vergrößern; Flüssigkeit und Erholung behalten Position/Größe.
 - [ ] Pfeile, Umschalt+Pfeile und +/− funktionieren; sichtbarer Tastaturfokus.
 - [ ] Speichern überlebt Reload/Reconnect; Abbrechen/Escape verwirft den Entwurf.

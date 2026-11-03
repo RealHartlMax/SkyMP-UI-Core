@@ -1,5 +1,9 @@
 # Integrationspatch
 
+<!-- plugin-doc-languages -->
+[Deutsch](../../docs/i18n/de/integration/skymp-fork/README.md) · [English](../../docs/i18n/en/integration/skymp-fork/README.md) · [Русский](../../docs/i18n/ru/integration/skymp-fork/README.md)
+<!-- /plugin-doc-languages -->
+
 `ui-core.patch` wird aus der auditierten lokalen Basis des RealHartlMax-Forks
 erzeugt und enthält ausschließlich den zusätzlichen UI-Host, UiCoreBridge,
 Fokuskoordination und den notwendigen Testharnessimport. Die bereits vorhandene

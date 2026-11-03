@@ -2,7 +2,7 @@
 
 ## Aktuelle Nutzervorgabe vom 29.10.2026: Plugin Runtime Loader
 
-Die neueste ausdrückliche Nutzervorgabe ersetzt die ältere feste Client-/CEF-Integration: Plugin-eigene native JS-Module und UI/CSS/Assets gehören als Quellcode in dieses Plugin-Repository und werden später als signiertes `Runtime/manifest.json`-Paket ausgeliefert. Nur der generische Bootstrap bleibt in `D:/GitHub/skymp`, der generische Download-/Prüf-/Restorepfad in `D:/GitHub/skymp-client-launcher`. Keine Plugin-Templates mehr in die gemeinsame Runtime kopieren. UI-Core-Consumer bleiben reine Daten-/Server-Plugins. Siehe [docs/PLUGIN_RUNTIME.md](docs/PLUGIN_RUNTIME.md). Der aktuelle Auftrag verbietet Builds, ZIPs, Commit und Push; dafür ist später eine separate Nutzervorgabe erforderlich.
+Die neueste ausdrückliche Nutzervorgabe ersetzt die ältere feste Client-/CEF-Integration: Plugin-eigene native JS-Module und UI/CSS/Assets gehören als Quellcode in dieses Plugin-Repository und werden später als signiertes `client/manifest.json`-Paket ausgeliefert. Nur der generische Bootstrap bleibt in `D:/GitHub/skymp`, der generische Download-/Prüf-/Restorepfad in `D:/GitHub/skymp-client-launcher`. Keine Plugin-Templates mehr in die gemeinsame Runtime kopieren. UI-Core-Consumer bleiben reine Daten-/Server-Plugins. Siehe [docs/PLUGIN_RUNTIME.md](docs/PLUGIN_RUNTIME.md). Der aktuelle Auftrag verbietet Builds, ZIPs, Commit und Push; dafür ist später eine separate Nutzervorgabe erforderlich.
 
 > Arbeitsauftrag für Coding-Agenten. Dieses Dokument gehört in die Wurzel eines **eigenständigen** Repositories für das Plugin `skymp-ui-core`. Es beschreibt zu implementierende Verträge, nicht bereits vorhandene Funktionen.
 

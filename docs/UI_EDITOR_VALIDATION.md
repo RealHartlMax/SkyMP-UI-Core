@@ -1,5 +1,9 @@
 # UI-Editor 1.1.0: aktueller Prüfstand
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/UI_EDITOR_VALIDATION.md) · [English](i18n/en/docs/UI_EDITOR_VALIDATION.md) · [Русский](i18n/ru/docs/UI_EDITOR_VALIDATION.md)
+<!-- /plugin-doc-languages -->
+
 Stand: 29.10.2026, Windows, Node 24.19.0. API 1, Frontend-Protokoll 1,
 ausgehandelter Editor 1. Kein Commit, Push, Upload oder Deployment.
 

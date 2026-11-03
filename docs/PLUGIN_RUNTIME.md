@@ -1,15 +1,19 @@
 # Plugin Runtime Loader – API 1
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/PLUGIN_RUNTIME.md) · [English](i18n/en/docs/PLUGIN_RUNTIME.md) · [Русский](i18n/ru/docs/PLUGIN_RUNTIME.md)
+<!-- /plugin-doc-languages -->
+
 Die gemeinsame SkyrimPlatform-Runtime enthält den generischen nativen Loader und den Host im vorhandenen CEF-Browser. Clientcode, UI-Templates, CSS und öffentliche Assets gehören zum jeweiligen Plugin. Nach dem einmaligen Bootstrap benötigen kompatible Plugin-Änderungen keinen neuen Launcher-EXE- oder gemeinsamen Runtime-Build. Native DLLs bleiben im zentralen, zur Skyrim-Version passenden Basispaket.
 
 ## Aufbau und Zuständigkeit
 
 ```text
 Plugins/SkyMPChat/
-  plugin.json                 # runtime: "Runtime/manifest.json"
+  plugin.json                 # runtime: "client/manifest.json"
   index.cjs                   # privater Server-Einstieg
   config.json                 # private Server-Konfiguration
-  Runtime/
+  client/
     manifest.json
     client.js                 # optional: nativer JS-Client
     ui.js                     # optional: CEF-Oberfläche
@@ -29,7 +33,7 @@ Das öffentliche Launcher-Manifest verwendet Version `3`, sobald Runtime-Pakete 
 - `GET /api/launcher/plugin-runtime/manifests/:sha256`: unveränderte Manifestbytes.
 - `GET /api/launcher/plugin-runtime/files/:id`: ausdrücklich freigegebene Datei. ID = SHA-256 von `manifestSha256 + "\0" + file.path`.
 
-Es gibt keine öffentliche Verzeichnisauflistung des Plugins. Nur die explizite Dateiliste unter `Runtime/` wird ausgeliefert. Server-Bundle und Konfiguration außerhalb dieses Verzeichnisses erhalten keinen Downloadpfad. Symlinks, Pfadausbrüche, Windows-Gerätenamen, Namenskollisionen ohne Beachtung der Großschreibung und native Binärdateien sind ausgeschlossen. Auch Text wird bytegenau als Binärtransport geliefert.
+Es gibt keine öffentliche Verzeichnisauflistung des Plugins. Nur die explizite Dateiliste unter `client/` wird ausgeliefert. Server-Bundle und Konfiguration außerhalb dieses Verzeichnisses erhalten keinen Downloadpfad. Symlinks, Pfadausbrüche, Windows-Gerätenamen, Namenskollisionen ohne Beachtung der Großschreibung und native Binärdateien sind ausgeschlossen. Auch Text wird bytegenau als Binärtransport geliefert.
 
 ```json
 {
@@ -51,7 +55,9 @@ Alte Server ohne `pluginRuntime` verwenden weiterhin die eingefrorenen Chat-/UI-
 
 ## Signieren und Herausgeber freigeben
 
-Launcher und nativer Loader prüfen Ed25519 über kanonisches UTF-8-JSON: Objektschlüssel rekursiv sortieren, Array-Reihenfolge erhalten, keine zusätzlichen Leerzeichen; das gesamte Feld `signature` auslassen. SHA-256, Signatur und öffentliche Schlüssel verwenden kleine Hex-Zeichen. Ein Entwickler-Build darf einen unsignierten Kandidaten erzeugen; der Launcher akzeptiert ihn nicht und die Release-Paketierung verlangt ein signiertes Manifest.
+**Signaturen sind optional.** Ohne Schlüssel reicht das Manifest mit Größe und SHA-256 jeder Datei; das schützt vor beschädigten Downloads, nicht vor einem böswilligen Server. Erst wenn ein Spieler im Launcher vertrauenswürdige Herausgeber einträgt, sind gültige Signaturen dieser Herausgeber Pflicht.
+
+Launcher und nativer Loader prüfen Ed25519 über kanonisches UTF-8-JSON: Objektschlüssel rekursiv sortieren, Array-Reihenfolge erhalten, keine zusätzlichen Leerzeichen; das gesamte Feld `signature` auslassen. SHA-256, Signatur und öffentliche Schlüssel verwenden kleine Hex-Zeichen. 
 
 ```powershell
 # Einmalig, außerhalb des öffentlichen Plugin-/Runtime-Verzeichnisses:
@@ -61,16 +67,16 @@ $env:SKYMP_PLUGIN_SIGNING_KEY = 'C:/private/herausgeber.pem'
 $env:SKYMP_PLUGIN_KEY_ID = 'herausgeber'
 # Bei einem später ausdrücklich beauftragten Plugin-Build wird damit signiert.
 # Alternativ einen bereits gebauten Kandidaten signieren:
-node tools/plugin-runtime/package.cjs sign --root Runtime --private-key C:/private/herausgeber.pem --key-id herausgeber
+node tools/plugin-runtime/package.cjs sign --root client --private-key C:/private/herausgeber.pem --key-id herausgeber
 ```
 
-Den privaten Schlüssel weder in `Runtime/` ablegen noch in öffentliche Archive übernehmen. Spieler tragen nur die unabhängig geprüfte öffentliche JSON-Zuordnung in **Launcher-Einstellungen → Spiel → Vertrauenswürdige Plugin-Herausgeber** ein. Der Gameserver kann sich diesen Vertrauensstatus nicht selbst erteilen. Unbekannte Herausgeber, veränderte Bytes, falsche Signaturen, inkompatible APIs und geänderte vorhandene Versionen brechen die Vorbereitung vor dem Skyrim-Start ab.
+Den privaten Schlüssel weder in `client/` ablegen noch in öffentliche Archive übernehmen. Spieler tragen nur die unabhängig geprüfte öffentliche JSON-Zuordnung in **Launcher-Einstellungen → Spiel → Vertrauenswürdige Plugin-Herausgeber** ein. Der Gameserver kann sich diesen Vertrauensstatus nicht selbst erteilen. Veränderte Bytes, inkompatible APIs und geänderte vorhandene Versionen brechen die Vorbereitung vor dem Skyrim-Start ab.
 
 Der aktuelle Quellauftrag hat keine dauerhaften Herausgeberschlüssel oder Release-Pakete erzeugt. Automatisierte Quelltests verwenden ausschließlich temporäre Testschlüssel, die anschließend gelöscht werden.
 
 ## Download, Installation und Serverwechsel
 
-Der Launcher bereitet zuerst die zur Skyrim-Version passende Basis-Runtime vor. Für Plugin-Pakete muss deren Manifest `pluginRuntimeApi:1` ausweisen. Danach werden die signierten Plugin-Manifeste und alle Dateien geprüft. Die Dateien landen ausschließlich unter `Data/Platform/PluginRuntime/packages/<pluginId>/<manifestSha256>/`. Ein per Hash gebundener `active.json`-Index enthält die komplette Paketliste sowie Zielhost und Spielport.
+Der Launcher bereitet zuerst die zur Skyrim-Version passende Basis-Runtime vor. Für Plugin-Pakete muss deren Manifest `pluginRuntimeApi:1` ausweisen. Danach werden die Plugin-Manifeste und alle Dateien geprüft. Die Dateien landen ausschließlich unter `Data/Platform/PluginRuntime/packages/<pluginId>/<manifestSha256>/`. Ein per Hash gebundener `active.json`-Index enthält die komplette Paketliste sowie Zielhost und Spielport.
 
 Index, Schlüssel-Freigaben und Einstellungen gehen über das vorhandene Installationsjournal mit Kollisionsprüfung, Sicherung und Wiederherstellung. Fehlgeschlagene Downloads aktivieren keinen unvollständigen Stand. Beim Serverwechsel ersetzt der Launcher die Paketliste und stellt zuvor verwaltete Dateien über denselben Journalpfad wieder her. Ein direkter Wechsel im Spiel zu einem anderen Host wird abgewiesen, bis dieser Server im Launcher vorbereitet wurde.
 
@@ -82,10 +88,10 @@ Der native Loader prüft Index, Signaturen und sämtliche Dateien erneut, bevor 
 
 `ui.js` registriert sich mit `window.SkyMPPluginRuntime.register({pluginId,apiVersion:1,mount(ctx)})`. `mount` erhält einen eigenen DOM-Bereich, Asset-Auflösung, React/Store/i18n, Reducer-Registrierung, Fokus-, Event- und Aufräumfunktionen. Es darf eine synchrone Aufräumfunktion zurückgeben. Gemeinsame Imports: React, ReactDOM, React Redux, React i18next, React Draggable und React Resizable. Während des Ladens liefert `require('skymp-plugin-host')` den aktuellen Host-Kontext. Verwende den vorhandenen Browser und entferne eigene Timer, Sockets und zusätzliche Listener beim Aufräumen. Doppelte Reducer-Besitzer sind ausgeschlossen; Paketabbau löscht auch deren Zustand. Eine fehlgeschlagene UI-Aktivierung entfernt die Module und stoppt die Verbindung.
 
-Chat und UI-Core verwenden weiterhin ihre vorhandenen serverseitig validierten Nachrichtenpfade. YACA behält den nativen EventSource-/TeamSpeak-Transport, sein Standard-Server-Bundle enthält aber keine eingebettete UI mehr. Die signiert heruntergeladene Oberfläche verwaltet ihren Socket und ihre Timer. Das native YACA-Modul entfernt beim Paketabbau außerdem den EventSource-Browser-Handler und beendet dessen Update-Kette. Dadurch begrenzt die 100-KiB-Grenze nativer EventSource-Funktionskörper nicht mehr die UI-Größe. `dist/ui/overlay.js` bleibt ein Werkzeug-Ausgang für Legacy-Tests; `SKYMP_YACA_LEGACY_OVERLAY=1` nimmt ihn bei einem späteren Build ausdrücklich wieder auf. Das neue Standardpaket benötigt den Bootstrap.
+Chat und UI-Core verwenden weiterhin ihre vorhandenen serverseitig validierten Nachrichtenpfade. YACA behält den nativen EventSource-/TeamSpeak-Transport, sein Standard-Server-Bundle enthält aber keine eingebettete UI mehr. Die heruntergeladene Oberfläche verwaltet ihren Socket und ihre Timer. Das native YACA-Modul entfernt beim Paketabbau außerdem den EventSource-Browser-Handler und beendet dessen Update-Kette. Dadurch begrenzt die 100-KiB-Grenze nativer EventSource-Funktionskörper nicht mehr die UI-Größe. `dist/ui/overlay.js` bleibt ein Werkzeug-Ausgang für Legacy-Tests; `SKYMP_YACA_LEGACY_OVERLAY=1` nimmt ihn bei einem späteren Build ausdrücklich wieder auf. Das neue Standardpaket benötigt den Bootstrap.
 
 ## Spätere Abnahme
 
-Quelltests und `tsc --noEmit` ersetzen keine Installation oder Spielabnahme. Nach den später beauftragten Builds: Plugin-Manifeste signieren, Herausgeber freigeben, Server vorbereiten, Downloadbytes prüfen, Skyrim starten und Chat/UI-Core/Metabolism/YACA benutzen. Reconnect sowie Wechsel zu einem Server mit anderen, weniger oder keinen Plugins prüfen; alte DOM-Bereiche, Listener, Fokus- und Datenzustände müssen verschwinden. Manipulierte Dateien, unbekannte Herausgeber und geänderte vorhandene Versionen müssen abgewiesen werden. Jede unterstützte Skyrim-Version sowie echtes TeamSpeak-Audio und Lipsync separat abnehmen.
+Quelltests und `tsc --noEmit` ersetzen keine Installation oder Spielabnahme. Nach den später beauftragten Builds: Server vorbereiten, Downloadbytes prüfen, Skyrim starten und Chat/UI-Core/Metabolism/YACA benutzen. Reconnect sowie Wechsel zu einem Server mit anderen, weniger oder keinen Plugins prüfen; alte DOM-Bereiche, Listener, Fokus- und Datenzustände müssen verschwinden. Manipulierte Dateien, unbekannte Herausgeber und geänderte vorhandene Versionen müssen abgewiesen werden. Jede unterstützte Skyrim-Version sowie echtes TeamSpeak-Audio und Lipsync separat abnehmen.
 
 Im aktuellen Auftrag wurden ausschließlich Quellen und Dokumentation geändert. Keine neuen Builds, ZIPs, Commits, Pushes oder Veröffentlichungen.

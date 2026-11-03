@@ -1,5 +1,9 @@
 # Verifizierte Architektur
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/ARCHITECTURE.md) · [English](i18n/en/docs/ARCHITECTURE.md) · [Русский](i18n/ru/docs/ARCHITECTURE.md)
+<!-- /plugin-doc-languages -->
+
 > Architektur-Update 29.10.2026: [PLUGIN_RUNTIME.md](PLUGIN_RUNTIME.md) ersetzt die feste Client-/CEF-Quellkopie durch ein Plugin-eigenes, signiertes Runtime-Paket. Die generischen Loader-Quellen liegen im Fork und Launcher. Alle nachfolgenden Befunde zum alten Kopier-/Paketweg sind historische Integrationsnachweise. Für diesen neuen Stand wurden keine Builds oder ZIPs erstellt.
 
 Audit: 28.10.2026. Arbeitsrepository `D:/GitHub/SkyMP-UI-Core`, Integrationsquelle

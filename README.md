@@ -1,5 +1,9 @@
 # SkyMP UI Core
 
+<!-- plugin-doc-languages -->
+[Deutsch](docs/i18n/de/README.md) · [English](docs/i18n/en/README.md) · [Русский](docs/i18n/ru/README.md)
+<!-- /plugin-doc-languages -->
+
 > Stand 29.10.2026: Der neue [Plugin Runtime Loader](docs/PLUGIN_RUNTIME.md) liefert Plugin-Clientcode und UI über signierte Pakete vom Gameserver. Die gemeinsame Runtime und der Launcher benötigen einmalig den generischen Bootstrap; danach bleiben kompatible Plugin-Updates im Plugin-Projekt. Die folgende ältere Build-/Integrationsbeschreibung gilt nur, soweit sie dem neuen Vertrag nicht widerspricht. Diese Änderung wurde ausschließlich im Quellcode umgesetzt; neue Builds, ZIPs und Spielabnahmen stehen noch aus.
 
 Gemeinsame Ingame-UI für den RealHartlMax-SkyMP-Fork: Widgets, sichere deklarative

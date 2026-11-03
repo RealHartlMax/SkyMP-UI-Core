@@ -1,7 +1,7 @@
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..'), version = require('../package.json').version;
-require('./plugin-runtime/package.cjs').verifyRuntimePackage(path.join(root, 'release/SkyMPUICore/Runtime'), require('../plugin.json'));
+require('./plugin-runtime/package.cjs').verifyRuntimePackage(path.join(root, 'release/SkyMPUICore/client'), require('../plugin.json'));
 const directory = path.join(root, 'artifacts/packages'); fs.mkdirSync(directory, { recursive: true });
 const stage = fs.mkdtempSync(path.join(root, 'artifacts/package-stage-'));
 const copy = (from, to) => { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.cpSync(from, to, { recursive: true }); };

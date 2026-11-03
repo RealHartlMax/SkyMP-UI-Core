@@ -1,5 +1,9 @@
 # Installation, Betrieb und Upgrade
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/INSTALLATION.md) · [English](i18n/en/docs/INSTALLATION.md) · [Русский](i18n/ru/docs/INSTALLATION.md)
+<!-- /plugin-doc-languages -->
+
 ## Gameserver
 
 Den tatsächlichen Game-CWD aus Startskript/Prozess bestimmen; `Plugins/` wird

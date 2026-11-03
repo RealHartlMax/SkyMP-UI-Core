@@ -32,7 +32,6 @@ async function main() {
     const readme = path.join(root, name === 'SkyMPUICore' ? 'README.md' : `examples/${name}/README.md`);
     if (fs.existsSync(readme)) fs.copyFileSync(readme, path.join(dir, 'README.md'));
   }
-  fs.cpSync(path.join(root, 'Runtime'), path.join(root, 'release/SkyMPUICore/Runtime'), { recursive: true });
   fs.copyFileSync(path.join(root, 'config.json'), path.join(root, 'release/SkyMPUICore/config.json'));
   fs.cpSync(path.join(root, 'locales'), path.join(root, 'release/SkyMPUICore/locales'), { recursive: true });
   fs.cpSync(path.join(root, 'docs'), path.join(root, 'release/SkyMPUICore/docs'), { recursive: true });

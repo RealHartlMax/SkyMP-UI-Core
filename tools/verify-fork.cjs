@@ -32,7 +32,7 @@ function installFixture() {
     fs.mkdirSync(path.join(dir, 'Plugins', name), { recursive: true });
     for (const file of ['plugin.json', 'index.cjs']) fs.copyFileSync(path.join(root, 'release', name, file), path.join(dir, 'Plugins', name, file));
     if (name === 'SkyMPUICore') {
-      fs.cpSync(path.join(root, 'release', name, 'Runtime'), path.join(dir, 'Plugins', name, 'Runtime'), { recursive: true });
+      fs.cpSync(path.join(root, 'release', name, 'client'), path.join(dir, 'Plugins', name, 'client'), { recursive: true });
       fs.copyFileSync(path.join(root, 'release', name, 'config.json'), path.join(dir, 'Plugins', name, 'config.json'));
       fs.cpSync(path.join(root, 'release', name, 'locales'), path.join(dir, 'Plugins', name, 'locales'), { recursive: true });
     }

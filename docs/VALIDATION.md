@@ -1,5 +1,9 @@
 # Prüfstand und verbleibende Abnahme
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/VALIDATION.md) · [English](i18n/en/docs/VALIDATION.md) · [Русский](i18n/ru/docs/VALIDATION.md)
+<!-- /plugin-doc-languages -->
+
 Aktueller Stand **1.1.0 / UI-Editor (29.10.2026)**: [UI_EDITOR_VALIDATION.md](UI_EDITOR_VALIDATION.md).
 Die nachfolgende Tabelle dokumentiert den ursprünglichen Stand vom 28.10.2026.
 

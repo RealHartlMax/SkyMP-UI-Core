@@ -1,5 +1,9 @@
 # Öffentliche Server-API v1
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/API.md) · [English](i18n/en/docs/API.md) · [Русский](i18n/ru/docs/API.md)
+<!-- /plugin-doc-languages -->
+
 `globalThis.skympUi` ist eine nicht überschreibbare Referenz auf ein eingefrorenes
 Serviceobjekt im gemeinsamen Gamemode-Prozess. `kind: process` hat keinen Zugriff.
 `getStatus().ready` bezeichnet den initialisierten Server-Service, nicht einen
@@ -56,6 +60,11 @@ UI Core; bei Abwesenheit einmalig einen optionalen Fallback wählen.
 Mindestens label/text/value muss bei status/text vorhanden sein. Positionen:
 `top-left`, `top-right`, `bottom-left`, `bottom-right`. `defaultVisible` ist optional.
 Widget-Layer sind nicht interaktiv. Keine dynamischen HTML-/JS-/CSS-/URL-Templates.
+
+`status`-Widgets und icon-list-Einträge erscheinen als Runensiegel: Im Kreis steht
+nur `value`; `label` und `text` sind Tooltip-/Screenreader-Text. Ein `value` als
+vollständiger Bruch „aktuell/max“, optional mit Einheit („85,3/100 · Gut“,
+„8/40 m“), füllt den Ring um das Siegel anteilig; `max` ist der volle Ring.
 
 Menüs: `{owner,id,title,schemaVersion,layoutId,modal?}`. Layouts:
 `core:dialog-v1` (Text und Buttons), `core:form-v1` (zusätzlich Formularfelder).

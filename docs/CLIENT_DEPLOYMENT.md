@@ -1,5 +1,9 @@
 # Client- und Launcher-Auslieferung
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/CLIENT_DEPLOYMENT.md) · [English](i18n/en/docs/CLIENT_DEPLOYMENT.md) · [Русский](i18n/ru/docs/CLIENT_DEPLOYMENT.md)
+<!-- /plugin-doc-languages -->
+
 Ein externes Server-Plugin kann diese Oberfläche im aktuellen Fork nicht allein
 installieren. UI Core benötigt einmalig den Integrationspatch im bestehenden
 SkyMP-Client und CEF. Weitere Verbraucher mit registrierten Templates benötigen

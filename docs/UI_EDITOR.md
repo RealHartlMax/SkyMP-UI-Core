@@ -1,5 +1,9 @@
 # UI-Editor und Fantasy-HUD (1.1.0)
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/UI_EDITOR.md) · [English](i18n/en/docs/UI_EDITOR.md) · [Русский](i18n/ru/docs/UI_EDITOR.md)
+<!-- /plugin-doc-languages -->
+
 ## Benutzung
 
 Im normalen Spiel den vorhandenen Chat mit Enter öffnen, /UiEdit eingeben und
@@ -26,26 +30,40 @@ fokussierten CEF (z. B. F6) als Zugang erhalten.
 ## Metabolism-Darstellung
 
 Der vorhandene, unveränderte Metabolism-Adapter liefert weiterhin genau ein
-icon-list-Widget mit Sättigung, Flüssigkeit und Erholung. Der neue generische
-Renderer stellt dessen Einträge als drei getrennte Runensiegel mit Metallrahmen,
-Füllring, Zahlenwert, Bezeichnung und serverseitigem Statustext dar. Jeder Eintrag
-kann unabhängig verschoben, skaliert oder ausgeblendet werden. Auch andere
-icon-list-Verbraucher nutzen diese Darstellung ohne Änderung am UI Core.
+icon-list-Widget mit Sättigung, Flüssigkeit und Erholung. Der generische
+Renderer stellt dessen Einträge als drei getrennte Runensiegel dar: Rune und
+Zahlenwert im Kreis, darum ein Wertring mit Metallrahmen. Bezeichnung und
+Statustext stehen nicht mehr unter dem Siegel, sondern nur im Tooltip und für
+Screenreader; wechselnder Text kann ein Element deshalb weder vergrößern noch
+verschieben. Jeder Eintrag kann unabhängig verschoben, skaliert oder ausgeblendet
+werden. Auch andere icon-list-Verbraucher nutzen diese Darstellung ohne Änderung
+am UI Core.
 
-Der Füllring wird ausschließlich aus einem vollständigen positiven Bruch wie
-„85,3/100 · Gut“ abgeleitet. Deutsches Komma und englischer Dezimalpunkt werden
-unterstützt. Unbekannte Werte bleiben Text; der Client erfindet keine Spielwerte
-oder Metabolism-Regeln. Die Runen sind gebündelte einfache SVG-Geometrien, ohne
-externe Bild-/Schriftanfragen oder kostenpflichtigen Dienst.
+Der Wertring wird ausschließlich aus einem vollständigen positiven Bruch wie
+„85,3/100 · Gut“ abgeleitet: Das Maximum ist immer der volle Ring, die Hälfte ein
+halber Ring. Nach dem Maximum darf eine Einheit aus bis zu drei Buchstaben folgen,
+z. B. „8/40 m“; im Siegel steht dann „8 / 40 m“. Deutsches Komma und englischer
+Dezimalpunkt (höchstens zwei Nachkommastellen) werden unterstützt. Unbekannte
+Werte bleiben Text im Siegel mit leerem Ring; der Client erfindet keine Spielwerte
+oder Metabolism-Regeln. Der Zustand färbt Rune und Ring: Orange für `warning`,
+Rot für `error`, Grün für `success` bei `status`-Widgets. Die Runen sind
+gebündelte einfache SVG-Geometrien, ohne externe Bild-/Schriftanfragen oder
+kostenpflichtigen Dienst.
 
 ## Sprachreichweite und Statusanzeigen
 
 Auch normale `status`-Widgets verwenden dieselben Runensiegel, Metallrahmen,
 Schriften und Statusfarben. Die Darstellung gehört vollständig zu UI-Core;
 YACA liefert für `skymp-yaca-ts:voice-range` nur Reichweite, Mikrofon-/Tonstatus
-und Sprechstatus. Der Meterwert steht im Siegel, der Zustand darunter. Mute und
-Unmute werden aus YACA-Meldungen übernommen, auch bei gesperrter Reichweite.
-Ein Meterwert wie „8 m“ erzeugt keinen erfundenen prozentualen Füllstand.
+und Sprechstatus. Die Reichweite kommt als „8/40 m“: aktuelle Reichweite und
+größte Reichweite aus `voiceRanges.ranges` der YACA-`config.json`. Der Ring
+zeigt den Anteil (8 von 40 m = 20 %, 20 m = halber Ring, 40 m = voller Ring).
+Mikrofon-, Ton- und Sprechstatus aus den YACA-Meldungen (auch bei gesperrter
+Reichweite) erscheinen nur als Farbe von Rune und Ring: Gold aktiv, Grün beim
+Sprechen, Orange bei stummem Mikrofon/Ton oder ohne TeamSpeak. Weil kein
+Statustext mehr unter dem Siegel steht, springt das Element beim Sprechen nicht
+mehr. Ein Wert ohne Maximum wie „8 m“ erzeugt weiterhin keinen erfundenen
+prozentualen Füllstand.
 
 Das Widget behält seinen bisherigen Layoutschlüssel ohne `#0` und bleibt mit
 `/UiEdit` verschiebbar, skalierbar und ausblendbar. Die TeamSpeak-Verbindungswarnung

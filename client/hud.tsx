@@ -8,23 +8,24 @@ function Widget({ element }: { element: HudElement }) {
   if (isMedallion(element)) {
     const item = element.item ?? { label: element.label, value: s.value, tone: s.tone };
     const meter = meterValue(item.value), index = element.index ?? 0;
-    const detail = meter ? meter.status : element.item ? item.value : s.text;
+    // Only the seal is drawn: changing status text must never resize or move it.
+    const detail = meter ? meter.status : element.item ? '' : s.text;
     const title = [item.label, item.value, !element.item && s.text].filter(value => value !== undefined && value !== false && value !== '').join(' · ');
     return <div className={'ui-status ui-sigil-' + (index % 3) + (!element.item ? ' ui-standalone-status' : '') + ' tone-' + (item.tone ?? 'info')} title={title}>
       <div className="ui-medallion">
-        <svg className="ui-meter-ring" viewBox="0 0 100 100" aria-hidden="true">
+        <svg className="ui-meter-ring" viewBox="-6 -6 112 112" aria-hidden="true">
+          <circle className="ui-meter-track" cx="50" cy="50" r="50" />
+          {meter && <circle className="ui-meter-fill" cx="50" cy="50" r="52" pathLength="100" strokeDasharray={meter.percent + ' 100'} transform="rotate(-90 50 50)" />}
           <circle className="ui-meter-bezel" cx="50" cy="50" r="48" />
-          <path className="ui-meter-engraving" d="M50 0l4 5-4 5-4-5zM50 90l4 5-4 5-4-5zM0 50l5-4 5 4-5 4zM90 50l5-4 5 4-5 4z" />
-          <circle className="ui-meter-track" cx="50" cy="50" r="41" />
-          {meter && <circle className="ui-meter-fill" cx="50" cy="50" r="41" pathLength="100" strokeDasharray={meter.percent + ' 100'} transform="rotate(-90 50 50)" />}
+          <circle className="ui-meter-bezel" cx="50" cy="50" r="55.5" />
+          <path className="ui-meter-engraving" d="M50-5.5l2 3.5-2 3.5-2-3.5zM50 98.5l2 3.5-2 3.5-2-3.5zM-5.5 50l3.5-2 3.5 2-3.5 2zM98.5 50l3.5-2 3.5 2-3.5 2z" />
         </svg>
         <svg className="ui-rune" viewBox="0 0 100 100" aria-hidden="true"><path d={RUNES[index % RUNES.length]} /></svg>
-        {meter && <span className="ui-meter-number">{meter.text}<small> / {meter.max}</small></span>}
-        {!meter && !element.item && item.value !== undefined && <span className="ui-meter-number ui-status-value">{item.value}</span>}
+        {meter && <span className="ui-meter-number">{meter.text}<small> / {meter.max}{meter.unit && ' ' + meter.unit}</small></span>}
+        {!meter && item.value !== undefined && <span className="ui-meter-number ui-status-value">{item.value}</span>}
       </div>
-      <span className="ui-status-label">{shortLabel(item.label)}</span>
-      <span className="ui-status-detail">{detail}</span>
       {meter && <progress className="ui-sr-only" aria-label={item.label} value={meter.value} max={meter.max} />}
+      {detail && <span className="ui-sr-only">{detail}</span>}
     </div>;
   }
   if (element.widget.definition.kind === 'progress') return <><span>{s.label}</span><progress value={s.value} max={s.max} aria-label={s.label} /><span>{s.value} / {s.max}</span></>;

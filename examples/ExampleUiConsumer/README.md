@@ -1,5 +1,9 @@
 # ExampleUiConsumer
 
+<!-- plugin-doc-languages -->
+[Deutsch](../../docs/i18n/de/examples/ExampleUiConsumer/README.md) · [English](../../docs/i18n/en/examples/ExampleUiConsumer/README.md) · [Русский](../../docs/i18n/ru/examples/ExampleUiConsumer/README.md)
+<!-- /plugin-doc-languages -->
+
 Eigenständiges Testplugin. Nach UI Core laden. Beim erfolgreichen Frontend-Ready
 erscheinen ein Statuswidget und ein Bestätigungsdialog im normalen CEF-Root.
 Der Button aktualisiert das private Widget, meldet Erfolg und schließt das Menü.

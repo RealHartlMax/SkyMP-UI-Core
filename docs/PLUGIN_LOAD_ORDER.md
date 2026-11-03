@@ -1,5 +1,9 @@
 # Plugin-Ladereihenfolge und fehlende Beispiel-UI
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/PLUGIN_LOAD_ORDER.md) · [English](i18n/en/docs/PLUGIN_LOAD_ORDER.md) · [Русский](i18n/ru/docs/PLUGIN_LOAD_ORDER.md)
+<!-- /plugin-doc-languages -->
+
 Die gemeldeten Logs zeigen: ExampleUiConsumer und SecondUiConsumer wurden vor
 skymp-ui-core geladen. Sie wählen dann ihren dokumentierten optionalen Fallback
 und registrieren für diesen Prozess keine UI. Die spätere Ready-Meldung von

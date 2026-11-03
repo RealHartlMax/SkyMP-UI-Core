@@ -1,5 +1,9 @@
 # Fokus und Chat-Kompatibilität
 
+<!-- plugin-doc-languages -->
+[Deutsch](i18n/de/docs/FOCUS_AND_CHAT.md) · [English](i18n/en/docs/FOCUS_AND_CHAT.md) · [Русский](i18n/ru/docs/FOCUS_AND_CHAT.md)
+<!-- /plugin-doc-languages -->
+
 Es gibt genau einen Browser und einen nativen Fokusbesitzer: den vorhandenen
 BrowserService. UiCoreBridge nimmt nur überprüfte Fokuswünsche des Hosts an.
 Die ChatBridge und das eigenständige Chat-Repository bleiben inhaltlich unverändert.

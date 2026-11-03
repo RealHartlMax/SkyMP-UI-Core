@@ -33,26 +33,24 @@
 .skymp-ui-core .ui-item-content { position: absolute; top: 0; left: 0; width: 300px; transform-origin: top left; max-height: calc(100vh - 32px); overflow: hidden; }
 .skymp-ui-core .ui-meter-content { width: 112px; overflow: visible; }
 .skymp-ui-core .ui-widget { background: linear-gradient(120deg, #171b1eea, #121517dc); border-color: #978766; border-radius: 0; }
-.skymp-ui-core .ui-status { --sigil: #d8b877; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 3px 8px; text-align: center; color: var(--ui-parchment); filter: drop-shadow(0 2px 4px #000c); }
+.skymp-ui-core .ui-status { --sigil: #d8b877; display: flex; flex-direction: column; align-items: center; padding: 6px; text-align: center; color: var(--ui-parchment); filter: drop-shadow(0 2px 4px #000c); }
 .skymp-ui-core .ui-sigil-1 { --sigil: #9dc8c9; }
 .skymp-ui-core .ui-sigil-2 { --sigil: #c1b4d6; }
 .skymp-ui-core .ui-medallion { width: 100px; height: 100px; position: relative; background: radial-gradient(circle, #14191cd9 46%, #0c1013a1 63%, transparent 66%); }
-.skymp-ui-core .ui-meter-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; }
+/* The value ring surrounds the seal inside the same 112px square. Its track also
+   covers the seal's soft edge, so bright scenery never shows through a gap. */
+.skymp-ui-core .ui-meter-ring { position: absolute; left: -6px; top: -6px; width: 112px; height: 112px; overflow: visible; fill: none; }
 .skymp-ui-core .ui-meter-bezel { stroke: #8d805f; stroke-width: .8; }
 .skymp-ui-core .ui-meter-engraving { fill: #c5b486; stroke: #171c1f; stroke-width: .6; }
-.skymp-ui-core .ui-meter-track { stroke: #a99e8140; stroke-width: 3; }
-.skymp-ui-core .ui-meter-fill { stroke: var(--sigil); stroke-width: 3; stroke-linecap: butt; transition: stroke-dasharray .35s ease; }
+.skymp-ui-core .ui-meter-track { stroke: #0c1013b8; stroke-width: 11; }
+.skymp-ui-core .ui-meter-fill { stroke: var(--sigil); stroke-width: 5; stroke-linecap: butt; transition: stroke-dasharray .35s ease; }
 .skymp-ui-core .ui-rune { position: absolute; left: 30px; top: 15px; width: 40px; height: 48px; fill: none; stroke: var(--sigil); stroke-width: 4; stroke-linecap: square; stroke-linejoin: miter; }
 .skymp-ui-core .ui-meter-number { position: absolute; bottom: 14px; left: 0; width: 100%; color: #f7efd9; font: 18px/1 Georgia, serif; font-variant-numeric: tabular-nums; }
 .skymp-ui-core .ui-meter-number small { color: #c4bba6; font-size: 10px; }
 .skymp-ui-core .ui-status-value { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skymp-ui-core .ui-status-label { color: #ede3ca; font-size: 12px; line-height: 1.35; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
-.skymp-ui-core .ui-status-detail { color: #d1c8b4; font: 11px/1.4 'Segoe UI', sans-serif; min-height: 16px; overflow-wrap: anywhere; }
 .skymp-ui-core .ui-standalone-status.tone-success { --sigil: #bfe6b7; }
-.skymp-ui-core .ui-status.tone-warning { --sigil: #f0c478; }
+.skymp-ui-core .ui-status.tone-warning { --sigil: #f0965a; }
 .skymp-ui-core .ui-status.tone-error { --sigil: #ed9d8d; }
-.skymp-ui-core .tone-warning .ui-status-detail { color: #f0cc8d; }
-.skymp-ui-core .tone-error .ui-status-detail { color: #f3b2a2; }
 .skymp-ui-core .ui-sr-only { position: absolute; width: 1px; height: 1px; clip: rect(0,0,0,0); overflow: hidden; }
 .skymp-ui-core .ui-editor-grid { position: absolute; inset: 0; background: linear-gradient(#090e1438, #090e1466), repeating-linear-gradient(0deg, transparent 0 39px, #e3d3ac0c 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, #e3d3ac0c 39px 40px); border: 16px solid #05080b35; }
 .skymp-ui-core .ui-editable { pointer-events: auto; cursor: move; touch-action: none; user-select: none; outline: 1px dashed #bbaa7880; outline-offset: 6px; }
