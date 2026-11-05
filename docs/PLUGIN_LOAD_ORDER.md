@@ -1,5 +1,13 @@
 # Plugin-Ladereihenfolge und fehlende Beispiel-UI
 
+Stand 04.11.2026: UI Core bleibt unabhängig von Chat, Metabolism und YACA.
+Optionale Framework-Consumer prüfen `ui.framework?.version === 1` und nach Ready
+`framework.clientStatus(target)`. Die neue Erweiterung löst keine
+Loader-Abhängigkeiten auf und startet vorzeitig beendete Consumer nicht nachträglich.
+Eigene Widgets/Menüs/Interaktionen lassen sich mit `unregisterOwner` aufräumen;
+dies ist keine Hot-Reload-Funktion. Die nachfolgenden Dashboard-Buildnachweise
+stammen aus dem früheren Integrationsauftrag; hier werden keine fremden Repos gebaut.
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/PLUGIN_LOAD_ORDER.md) · [English](i18n/en/docs/PLUGIN_LOAD_ORDER.md) · [Русский](i18n/ru/docs/PLUGIN_LOAD_ORDER.md)
 <!-- /plugin-doc-languages -->

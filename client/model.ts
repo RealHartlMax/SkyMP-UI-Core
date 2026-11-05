@@ -1,4 +1,4 @@
-import { validateFrame, PROTOCOL_VERSION, PREFIX, POSITIONS, TOKEN_RE, object, type Frame, type Position } from '../shared/contracts';
+import { validateFrame, PROTOCOL_VERSION, PREFIX, POSITIONS, TOKEN_RE, object, orderMenus, type Frame, type Position } from '../shared/contracts';
 export interface ElementPreference { position?: Position; hidden?: boolean; x?: number; y?: number; scale?: number }
 export interface Preferences { scale: number; widgets: Record<string, ElementPreference> }
 export const emptyPreferences = (): Preferences => ({ scale: 100, widgets: {} });
@@ -27,10 +27,10 @@ export class UiModel {
   counter = 0;
   offset = 0;
   editorRequests = 0;
-  pending = new Map<string, { id: string; close: boolean; at: number }>();
+  pending = new Map<string, { id: string; close: boolean; at: number; revision?: number }>();
   constructor(private send: (type: string, data?: unknown) => void, private clock = Date.now) {}
   private newId() { return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`; }
-  announce() { this.send(PREFIX + 'frontReady', { protocolVersion: PROTOCOL_VERSION, frontId: this.frontId, editorVersion: 1 }); }
+  announce() { this.send(PREFIX + 'frontReady', { protocolVersion: PROTOCOL_VERSION, frontId: this.frontId, editorVersion: 1, frameworkVersion: 1 }); }
   reset(status = 'disconnected', rotate = false) {
     this.frame = null; this.status = status; this.pending.clear(); this.counter = 0; this.editorRequests = 0; this.focused = false;
     if (rotate) this.frontId = this.newId();
@@ -56,19 +56,25 @@ export class UiModel {
       if (!this.frame && next.customPacketType !== PREFIX + 'snapshot') return false;
       if (this.frame && (this.frame.sessionId !== next.sessionId || next.sequence <= this.frame.sequence)) return false;
       this.frame = next; this.status = 'ready'; this.offset = next.serverTime - this.clock();
-      for (const [id, pending] of this.pending) if (!next.menus.some(m => m.definition.id === pending.id) || this.clock() - pending.at >= 5000) this.pending.delete(id);
+      for (const [id, pending] of this.pending) {
+        const menu = next.menus.find(m => m.definition.id === pending.id);
+        if (!menu || (pending.revision !== undefined && menu.revision !== pending.revision) || this.clock() - pending.at >= 5000) this.pending.delete(id);
+      }
       return true;
     } catch { this.reset('invalid-packet'); return false; }
   }
   serverNow() { return this.clock() + this.offset; }
   visibleMenus() {
-    return this.allowed && this.frame ? this.frame.menus.filter(m => m.expiresAt > this.serverNow() && ![...this.pending.values()].some(p => p.close && p.id === m.definition.id)) : [];
+    return this.allowed && this.frame ? orderMenus(this.frame.menus.filter(m => m.expiresAt > this.serverNow() && ![...this.pending.values()].some(p => p.close && p.id === m.definition.id))) : [];
   }
   action(id: string, actionId: string, payload: unknown, close = false) {
     if (!this.frame || !this.allowed || this.counter >= 0xffffffff || this.pending.size >= 16 ||
         [...this.pending.values()].some(p => p.id === id)) return false;
+    const menu = this.frame.menus.find(m => m.definition.id === id);
+    if (menu && this.visibleMenus().slice(-1)[0] !== menu) return false;
+    if (menu?.revision !== undefined) { object(payload); payload = { ...payload, revision: menu.revision }; }
     const requestId = this.frame.sessionId + '_' + ++this.counter;
-    this.pending.set(requestId, { id, close, at: this.clock() });
+    this.pending.set(requestId, { id, close, at: this.clock(), ...(menu?.revision !== undefined ? { revision: menu.revision } : {}) });
     this.send(PREFIX + 'action', { protocolVersion: PROTOCOL_VERSION, widgetId: id, actionId, requestId, payload }); return true;
   }
   dismiss() { const m = this.visibleMenus().slice(-1)[0]; if (m) return this.action(m.definition.id, 'core.close', {}, true); return false; }

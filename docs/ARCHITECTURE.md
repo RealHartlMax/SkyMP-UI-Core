@@ -1,5 +1,13 @@
 # Verifizierte Architektur
 
+Aktueller Audit vom **04.11.2026**: [FRAMEWORK_AUDIT.md](FRAMEWORK_AUDIT.md).
+Die optionale [Framework-Erweiterung](FRAMEWORK.md) ergänzt den bestehenden Host
+und die Registry ohne API-/Protokollbruch. Native Plugin-Brücke und UI bleiben
+im Pluginpaket; keine neuen Kopien in die gemeinsame Runtime. Der geprüfte Fork
+verwendet `client/manifest.json`. Notwendige beziehungsweise optionale Core-Hooks
+und der Charakterpersistenz-Entwurf stehen in [CORE_HOOKS.md](CORE_HOOKS.md).
+Die folgenden früheren Audit-/Buildbefunde sind historische Nachweise.
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/ARCHITECTURE.md) · [English](i18n/en/docs/ARCHITECTURE.md) · [Русский](i18n/ru/docs/ARCHITECTURE.md)
 <!-- /plugin-doc-languages -->

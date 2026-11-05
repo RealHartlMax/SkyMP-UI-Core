@@ -1,33 +1,66 @@
 # SkyMP UI Core
 
-<!-- plugin-doc-languages -->
-[Deutsch](docs/i18n/de/README.md) · [English](docs/i18n/en/README.md) · [Русский](docs/i18n/ru/README.md)
-<!-- /plugin-doc-languages -->
+Gemeinsamer Renderer und UI-Service für unabhängige SkyMP-Plugins: HUD-Widgets,
+Notifications, Dialoge, Formulare und deklarative Panels im vorhandenen CEF.
+Chat, YACA, Metabolism und Gameplay-Regeln bleiben bei ihren jeweiligen Plugins.
 
-> Stand 29.10.2026: Der neue [Plugin Runtime Loader](docs/PLUGIN_RUNTIME.md) liefert Plugin-Clientcode und UI über signierte Pakete vom Gameserver. Die gemeinsame Runtime und der Launcher benötigen einmalig den generischen Bootstrap; danach bleiben kompatible Plugin-Updates im Plugin-Projekt. Die folgende ältere Build-/Integrationsbeschreibung gilt nur, soweit sie dem neuen Vertrag nicht widerspricht. Diese Änderung wurde ausschließlich im Quellcode umgesetzt; neue Builds, ZIPs und Spielabnahmen stehen noch aus.
+**API V1 · Frontend-Protokoll V1 · optionale Framework-Erweiterung V1.**
+Der lokale Entwicklungskandidat heißt **1.2.0-dev.20261104**. Er ist keine
+veröffentlichte Version. [Audit](docs/FRAMEWORK_AUDIT.md) und
+[Abschlussbericht](docs/FRAMEWORK_REPORT.md) dokumentieren den tatsächlichen Stand.
 
-Gemeinsame Ingame-UI für den RealHartlMax-SkyMP-Fork: Widgets, sichere deklarative
-Menüs, Notifications und eine versionierte Server-API. Der Host läuft im bereits
-vorhandenen React-/CEF-Root neben dem unveränderten SkyMP Chat.
+## Vorhandene und neue Bausteine
 
-**API v1 · Frontend-Protokoll v1 · Plugin 1.1.0.** Das Server-Plugin allein
-installiert keine Clientdateien. Clientskript und CEF müssen separat aktualisiert
-werden. Zwei echte Skyrim-Spieler bleiben als manuelle Abnahme offen; native
-Scamp-Bots und der Produktionsroot im Browser sind automatisiert geprüft.
+- HUD: Status-/Text-/Fortschrittswidgets und getrennte Runenanzeigen aus icon-list.
+- `/UiEdit`: Position, individuelle/global verfügbare Skalierung, Sichtbarkeit,
+  Speichern, Abbrechen und Zurücksetzen; bisherige Metabolism-/YACA-Schlüssel bleiben gültig.
+- Notifications mit Queue, TTL und Drosselung; bisherige Dialoge und Formularfelder.
+- Neu: `core:panel-v1` mit Reitern, Listen, Tabellen, Gegenstandslisten,
+  Fortschritt/Text und optionaler Einzelauswahl.
+- Neu: Menüpriorität, aktuelle Panelrevision, Auswahlvalidierung und explizites
+  Aufräumen von Ownern und Action-Handlern.
+- Neu: eine gemeinsame Interaktionsregistrierung für NPC, Spieler, Tür, Container,
+  Möbel, Sammelobjekt und Händler. Der Server öffnet die Ansicht und autorisiert Actions.
 
-## UI im Spiel anpassen
+Die neuen Komponenten ergänzen den bestehenden Host. Sie enthalten keine
+vorgefertigten Jobs-, Handels- oder Charakter-Gameplayoberflächen. Ein optionaler
+Charakterpersistenz-Adapter ist [entworfen](docs/CORE_HOOKS.md), keine neue Datenbank.
 
-Mit **`/UiEdit`** im vorhandenen Chat lassen sich HUD-Elemente frei verschieben
-und einzeln skalieren. Speichern, Abbrechen, Sichtbarkeit und Reset sind direkt
-im Editor verfügbar. Metabolism erscheint als drei getrennte Fantasy-Runenanzeigen
-für Sättigung, Flüssigkeit und Erholung. Metabolism-Plugin und Chat bleiben unverändert.
+## Plugin Runtime
 
-Server-Plugin **und** Client-/CEF-Paket auf 1.1.0 aktualisieren; ein bloßer
-Server-Neustart verteilt keine neuen Clientdateien. [Bedienung und Upgrade](docs/UI_EDITOR.md).
+Plugin-eigener nativer JS-Code, React-Komponenten und CSS bleiben in diesem Repo.
+Der geprüfte lokale Fork akzeptiert **`runtime: "client/manifest.json"`**;
+`Runtime/manifest.json` wäre dort inkompatibel.
 
-## Lokal bauen und prüfen
+```text
+Plugins/SkyMPUICore/
+  plugin.json
+  index.cjs
+  config.json
+  locales/de.json
+  locales/en.json
+  client/
+    manifest.json
+    client.js
+    ui.js
+    ui.css
+```
 
-Node.js ab 20, npm. Im UI-Core-Repository:
+Der generische Bootstrap bleibt im SkyMP-Fork, Download/Prüfung/Restore im
+Launcher. Bei bereits installiertem Bootstrap benötigen diese UI-Erweiterungen
+keinen neuen gemeinsamen Client-/CEF-/Launcher-Build. Keine UI-Core-Templates
+mehr in die gemeinsame Runtime kopieren. Server- und Clientdateien mit
+zusammenpassender Pluginversion ausliefern; Gameserver neu starten, Launcher
+erneut vorbereiten und Skyrim neu starten. Operator-Konfiguration erhalten.
+
+Hash-, Versions- und Ed25519-Prüfungen bleiben bestehen. Signaturen sind im
+vorhandenen Vertrag optional; konfigurierte vertrauenswürdige Herausgeber
+erzwingen sie. Private Schlüssel bleiben außerhalb des öffentlichen Pakets.
+[Runtime-Vertrag](docs/PLUGIN_RUNTIME.md) · [Auslieferung](docs/CLIENT_DEPLOYMENT.md).
+
+## Lokal prüfen
+
+Node.js ab 20 und npm im UI-Core-Repository:
 
 ```powershell
 npm ci
@@ -35,52 +68,23 @@ npm run typecheck
 npm test
 npm run verify:fork
 npm run verify:native
-npm run package
 ```
 
-`build` bündelt TypeScript mit esbuild zu `dist/index.cjs`. `package` erzeugt
-installierbare ZIPs unter `artifacts/packages/`; Laufzeitdateien liegen außerdem
-entpackt in `release/`. Kein npm/node_modules auf dem Gameserver erforderlich.
-Die Fork-Prüfungen verwenden standardmäßig `../skymp`; abweichend `SKYMP_FORK`
-setzen. Der native Test benötigt dessen passenden `scam_native.node` und lokale
-Skyrim.esm. Linux-Server können das plattformneutrale CJS-Bundle verwenden;
-dieser Lauf wurde unter Windows geprüft.
+`npm test` führt zuerst den lokalen Build aus. `npm run build` erzeugt
+gebündelte CJS-Entrys, Typdefinitionen, den CEF-Host und das Plugin-Runtime-Paket
+unter `dist/` beziehungsweise `release/`. Für den Game-CWD-Loader sind keine
+relativen Source-Imports oder installierten node_modules erforderlich.
 
-## Installation
+`verify:fork` liest den tatsächlichen lokalen Fork-Loader, standardmäßig
+`../skymp` (alternativ `SKYMP_FORK`). `verify:native` benötigt dessen
+passendes `scam_native.node` und lokale Spieldaten; es startet Scamp-Bots.
+Keine Referenzrepository-Quellen werden verändert. ZIP-/Release-Befehle werden
+im aktuellen Auftrag nicht ausgeführt. Lokale Buildbytes dürfen keine bereits
+verteilte unveränderliche Runtime-Version ersetzen.
 
-`release/SkyMPUICore/` nach `<Gameserver-Arbeitsverzeichnis>/Plugins/SkyMPUICore/`
-kopieren. In einer Distribution mit `Server/` als Game-CWD ist das
-`Server/Plugins/SkyMPUICore/`. Im safe-Modus einmal entdecken lassen, im Dashboard
-unter **Ressourcen → Server-Plugins** aktivieren, Gameserver vollständig neu starten.
-
-Für den Test zusätzlich `ExampleUiConsumer` und `SecondUiConsumer` installieren
-und nach `skymp-ui-core` laden. ExampleUiConsumer öffnet nach echtem Frontend-Ready
-einen Dialog; Bestätigen aktualisiert das private Widget durch einen autorisierten
-Server-Handler. UI Core selbst erzeugt keine Spielwerte, Chatnachrichten oder
-Commands. Auf Produktivservern die Beispiele weglassen.
-
-Die neue Client-Runtime liegt lokal unter
-`D:/GitHub/skymp-client-launcher/local-builds/runtime-2026-10-28-ui-core/`.
-Sie enthält neue Client-/CEF-Dateien, passende Hashes, binäre Texttransporte und
-einen Katalog für Skyrim **1.7.104.0 / SKSE 2.3.1**. Sie ist nicht veröffentlicht.
-Nach Client-Rollout Skyrim neu starten. Ein neuer Launcher-EXE-Build ist für dieses
-Paketupdate nicht erforderlich.
-
-## Sprache konfigurieren
-
-In `Plugins/SkyMPUICore/config.json`:
-
-```json
-{ "locale": "de", "logLevel": "info" }
-```
-
-`locale` akzeptiert `de` oder `en`. Texte stehen in `locales/de.json` und
-`locales/en.json` neben der Konfiguration. Fehlende Dateien/Keys erhalten die
-mitgebündelte Übersetzung derselben Sprache als Fallback; unbekannte Keys,
-ungültige JSON-/Textwerte werden ausdrücklich abgewiesen. Nach Änderungen den
-Gameserver neu starten; für Sprachtexte ist kein Clientbuild nötig. In der UI
-kann der Spieler die Sprache für die laufende Ansicht umstellen.
-Widget-/Menütexte fremder Plugins bleiben Eigentum dieser Plugins.
+Die Tests prüfen auch die unveränderten lokalen Metabolism-/YACA-Adapter, wenn
+deren Checkouts verfügbar sind. Fehlende optionale Referenzcheckouts werden als
+Skip ausgewiesen. Eine echte Skyrim-/CEF-/TeamSpeak-Abnahme bleibt separat offen.
 
 ## Eigenes Plugin anbinden
 
@@ -92,30 +96,43 @@ if (!ui || ui.apiVersion !== 1 || !ui.getStatus().ready) {
   ui.registerWidget({
     owner: 'my-plugin', id: 'my-plugin:status', kind: 'status', schemaVersion: 1
   });
-  // userId comes from your authenticated server event, never from CEF JSON.
-  // ui.updateWidget({ userId }, 'my-plugin:status', {
-  //   schemaVersion: 1, label: 'Status', text: 'Vom Server erzeugt'
-  // });
+  // Call updateWidget from your authenticated server event.
 }
 ```
 
-Action-Handler sind ohne explizite `authorize`-Funktion gesperrt. Es werden nur
-mitgelieferte Templates/Layout-IDs akzeptiert, keine HTML-/JS-/CSS-Payloads.
-Details und ausführbare Referenzen: [API](docs/API.md),
-[ExampleUiConsumer](examples/ExampleUiConsumer/index.ts).
+Vorhandene API-V1-Consumer bleiben unverändert. Für neue Panels/Interaktionen
+zusätzlich `ui.framework?.version === 1` und nach dem Handshake
+`ui.framework.clientStatus(target)` prüfen. Alte Clients erhalten ihre bisherigen
+Widgets und Dialoge. Kein frei übertragenes HTML, CSS, JavaScript oder React-Code.
 
-## Integration und Nachweise
+Actions sind ohne expliziten synchronen Authorizer gesperrt. UI Core prüft native
+Identität, offene Komponenten, aktuelle Revisionen/Auswahlen, Replay und Limits.
+Gameplay-Plugins prüfen weiterhin die aktuellen fachlichen Regeln und beachten
+`ctx.signal` bei asynchroner Arbeit.
 
-- [Architektur und verifizierter Istzustand](docs/ARCHITECTURE.md)
-- [Installation, Aktivierung, Konfiguration und Upgrade](docs/INSTALLATION.md)
-- [Clientbuild, Fork-Patch und Launcher-Rollout](docs/CLIENT_DEPLOYMENT.md)
+[API V1](docs/API.md) · [Framework-Verträge und Beispiele](docs/FRAMEWORK.md) ·
+[ExampleUiConsumer](examples/ExampleUiConsumer/index.ts) ·
+[Optionaler FrameworkConsumer](examples/FrameworkConsumer/index.ts).
+
+## Betrieb und Dokumentation
+
+In `Plugins/SkyMPUICore/config.json` beispielsweise
+`{"locale":"de","logLevel":"info"}` setzen. Die bisherigen
+Server-Locale-Dateien bleiben nutzbar; Fachtexte übersetzen die Consumer.
+Neue Framework-Bedienhinweise sind in DE/EN mitgebündelt.
+Neu entdeckte Plugins im Dashboard aktivieren und den Gameserver vollständig
+neu starten. UI Core vor seinen Consumern laden; Abhängigkeiten werden nicht
+automatisch aufgelöst.
+
+- [Installation und Upgrade](docs/INSTALLATION.md)
+- [Architektur und aktueller Audit](docs/ARCHITECTURE.md)
 - [Fokus und Chat](docs/FOCUS_AND_CHAT.md)
-- [Automatische Prüfung und offene Spielabnahme](docs/VALIDATION.md)
-- [Manueller Zweiclient-Testplan](docs/MANUAL_ACCEPTANCE.md)
-- [Plugin-Ladereihenfolge im Server-Dashboard](docs/PLUGIN_LOAD_ORDER.md)
+- [HUD und Spielerpräferenzen](docs/HUD_PREFERENCES.md)
+- [Vorhandene und vorgeschlagene Core-Hooks](docs/CORE_HOOKS.md)
+- [Plugin-Ladereihenfolge](docs/PLUGIN_LOAD_ORDER.md)
+- [Aktuelle Prüfung und offene Funktionen](docs/FRAMEWORK_REPORT.md)
+- [Manuelle Zweiclient-Abnahme](docs/MANUAL_ACCEPTANCE.md)
 
-Der lokale Fork wurde mit einem isolierten, hashgeprüften Patch angepasst.
-`integration/skymp-fork/ui-core.patch` enthält genau diese Änderungen gegen den
-auditierten lokalen Chat-Stand. `integration/launcher/` enthält den separaten
-Runtime-Paketierungsadapter. Backups und Hashprotokolle liegen in `artifacts/`.
-Der Chat-Quellcode unter `D:/GitHub/SkyMP-Chat` wurde nicht verändert.
+Ältere Übersetzungen und Integrationsnachweise unter `docs/i18n/` beziehungsweise
+`integration/` beschreiben teilweise den früheren festen Kopierweg.
+Maßgeblich sind die aktuellen Dokumente oben.

@@ -1,5 +1,18 @@
 # Plugin Runtime Loader – API 1
 
+Audit **04.11.2026**: `skymp5-server/ts/index.ts` und
+`pluginRuntimePackages.ts` akzeptieren lokal weiterhin ausschließlich
+`runtime: "client/manifest.json"`. `Runtime/manifest.json` wird abgewiesen.
+Der neue Pfad wird deshalb hier nicht übernommen. SDK-Vertragskopie und Fork
+sind bytegleich; Details und SHA-256 stehen im [Audit](FRAMEWORK_AUDIT.md).
+Die Komponentenfähigkeit `frameworkVersion:1` ist eine UI-Core-Erweiterung;
+sie verändert weder Runtime-Format, Signaturverfahren noch Launcher-APIs.
+
+Der aktuelle Build ist ein lokaler Kandidat `1.2.0-dev.20261104`. Er wurde nicht
+veröffentlicht oder installiert. Geänderte Bytes dürfen nie als schon verteilte
+Version 1.1.0 angeboten werden. Es werden keine dauerhaften Schlüssel angelegt;
+Signaturen werden weiterhin über die bestehende Buildkonfiguration erstellt.
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/PLUGIN_RUNTIME.md) · [English](i18n/en/docs/PLUGIN_RUNTIME.md) · [Русский](i18n/ru/docs/PLUGIN_RUNTIME.md)
 <!-- /plugin-doc-languages -->
@@ -94,4 +107,6 @@ Chat und UI-Core verwenden weiterhin ihre vorhandenen serverseitig validierten N
 
 Quelltests und `tsc --noEmit` ersetzen keine Installation oder Spielabnahme. Nach den später beauftragten Builds: Server vorbereiten, Downloadbytes prüfen, Skyrim starten und Chat/UI-Core/Metabolism/YACA benutzen. Reconnect sowie Wechsel zu einem Server mit anderen, weniger oder keinen Plugins prüfen; alte DOM-Bereiche, Listener, Fokus- und Datenzustände müssen verschwinden. Manipulierte Dateien, unbekannte Herausgeber und geänderte vorhandene Versionen müssen abgewiesen werden. Jede unterstützte Skyrim-Version sowie echtes TeamSpeak-Audio und Lipsync separat abnehmen.
 
-Im aktuellen Auftrag wurden ausschließlich Quellen und Dokumentation geändert. Keine neuen Builds, ZIPs, Commits, Pushes oder Veröffentlichungen.
+Der frühere Auftrag vom 29.10.2026 änderte ausschließlich Quellen und Dokumentation.
+Im Erweiterungsauftrag vom 04.11.2026 sind lokale Plugin-Builds und Tests erlaubt;
+ZIPs, Commits, Pushes und Veröffentlichungen werden weiterhin nicht erstellt.

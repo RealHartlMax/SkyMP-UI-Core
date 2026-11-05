@@ -1,5 +1,26 @@
 # Client- und Launcher-Auslieferung
 
+## Aktueller Auslieferungsweg vom 04.11.2026
+
+Der lokale generische Plugin Runtime Loader ist maßgeblich. `npm run build` im
+UI-Core-Repository erzeugt `release/SkyMPUICore/index.cjs` sowie
+`release/SkyMPUICore/client/{manifest.json,client.js,ui.js,ui.css}`. Zusammen mit
+`plugin.json` bilden sie einen zusammengehörigen lokalen Kandidaten. Das Manifest
+referenziert ausschließlich diese öffentlichen Clientdateien. Die SDK-Signierung
+verwendet weiterhin die bestehende externe Schlüsselkonfiguration.
+
+Bei vorhandenem Bootstrap sind für die Framework-Erweiterung keine neuen
+Fork-/Launcher-Builds erforderlich. Nach späterer Installation des vollständigen
+Pluginpakets den Gameserver neu starten und den Server im kompatiblen Launcher
+erneut vorbereiten, danach Skyrim neu starten. Der Launcher prüft und journalisiert
+die Plugin-Dateien; bei Serverwechsel gelten seine bisherigen Restorepfade.
+Keine UI-Core-Templates nach `skymp5-front/src/features/uiCore` kopieren.
+
+`Runtime/manifest.json` wäre im geprüften lokalen Fork inkompatibel. Details:
+[Plugin Runtime](PLUGIN_RUNTIME.md), [Audit](FRAMEWORK_AUDIT.md).
+Die folgenden festen Kopier-/Integrationsanweisungen dokumentieren ausschließlich
+den Legacy-Stand von 28./29.10.2026 und sind für neue Pluginpakete nicht anzuwenden.
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/CLIENT_DEPLOYMENT.md) · [English](i18n/en/docs/CLIENT_DEPLOYMENT.md) · [Русский](i18n/ru/docs/CLIENT_DEPLOYMENT.md)
 <!-- /plugin-doc-languages -->

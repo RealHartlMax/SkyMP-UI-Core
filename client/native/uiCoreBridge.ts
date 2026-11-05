@@ -4,6 +4,8 @@ export class UiCoreBridge {
   private playing = false;
   private frontId: string | null = null;
   private editorVersion = 0;
+  private frameworkVersion = 0;
+  private frameworkAnnounced = false;
   private sessionId: string | null = null;
   private ready = false;
   private sequence = 0;
@@ -17,7 +19,7 @@ export class UiCoreBridge {
       const [type, data] = e.arguments;
       if (type === 'skympUi:frontReady' && data?.protocolVersion === 1 && typeof data.frontId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(data.frontId)) {
         if (this.frontId === data.frontId) return;
-        this.frontId = data.frontId; this.editorVersion = data.editorVersion === 1 ? 1 : 0; this.clearSession(); this.attempts = 0;
+        this.frontId = data.frontId; this.editorVersion = data.editorVersion === 1 ? 1 : 0; this.frameworkVersion = data.frameworkVersion === 1 ? 1 : 0; this.clearSession(); this.attempts = 0;
         this.dispatch({ customPacketType: 'skympUi:interaction', allowed: this.allowed }); this.handshake();
       } else if (type === 'skympUi:focus' && typeof data === 'boolean') this.requestFocus(data && this.ready && this.allowed);
       else if (type === 'skympUi:action' && this.ready && this.allowed && data?.protocolVersion === 1 &&
@@ -47,6 +49,12 @@ export class UiCoreBridge {
           if (this.ready && p.sessionId !== this.sessionId) return;
           this.sessionId = p.sessionId; this.ready = true; this.deadline = 0; this.sequence = p.sequence;
           this.lastAlive = Date.now(); this.heartbeat = Date.now() + 10000; this.dispatch(p);
+          // A separate extension announcement is ignored safely by older V1
+          // servers, whose strict ready validator cannot accept new fields.
+          if (this.frameworkVersion === 1 && !this.frameworkAnnounced) {
+            this.frameworkAnnounced = true;
+            this.send('framework', { frontId: this.frontId, sessionId: this.sessionId, frameworkVersion: 1 });
+          }
         } else if (this.ready && p.sessionId === this.sessionId) {
           if (p.customPacketType === 'skympUi:update') {
             if (!Number.isSafeInteger(p.sequence) || p.sequence <= this.sequence) return;
@@ -80,7 +88,7 @@ export class UiCoreBridge {
     const json = JSON.stringify(JSON.stringify(data)).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
     this.sp.browser.executeJavaScript(`window.dispatchEvent(new CustomEvent('skympUi:packet',{detail:JSON.parse(${json})}))`);
   }
-  private clearSession() { this.ready = false; this.sessionId = null; this.sequence = 0; this.deadline = 0; this.requestFocus(false); }
+  private clearSession() { this.ready = false; this.sessionId = null; this.sequence = 0; this.deadline = 0; this.frameworkAnnounced = false; this.requestFocus(false); }
   private handshake() {
     if (!this.playing || !this.frontId) return;
     this.attempts++; this.deadline = Date.now() + 2000;

@@ -1,5 +1,19 @@
 # Fokus und Chat-Kompatibilität
 
+Erweiterung 04.11.2026: Der Host und der Server verwenden dieselbe Menüreihenfolge
+(Modalität, `priority`, Öffnungsreihenfolge). Nur die oberste Ansicht akzeptiert
+Aktionen; Escape schließt genau diese Ebene mit Revisionsschutz für Panels.
+Reiter nutzen Links/Rechts/Home/End und Tab/Shift+Tab berücksichtigen keine
+versteckten Reiterinhalte. Ein unerwartetes Browser-Unfocus wird bei weiterhin
+freigegebener Interaktion über denselben nativen Fokuswunsch korrigiert;
+Skyrim-Menü-/Disconnect-Sperren bleiben vorrangig. Keine zusätzlichen Hotkeys.
+
+`Menu.RaceSex` sperrt bereits die Plugin-Interaktion. Für eine zukünftige eigene
+Charakterauswahl ist der server-/clientübergreifende Lifecycle-Hook separat zu
+integrieren; er wird hier nicht als vorhanden behauptet. Siehe
+[CORE_HOOKS.md](CORE_HOOKS.md). Die aktuellen Prüfgrenzen stehen in
+[FRAMEWORK_REPORT.md](FRAMEWORK_REPORT.md).
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/FOCUS_AND_CHAT.md) · [English](i18n/en/docs/FOCUS_AND_CHAT.md) · [Русский](i18n/ru/docs/FOCUS_AND_CHAT.md)
 <!-- /plugin-doc-languages -->

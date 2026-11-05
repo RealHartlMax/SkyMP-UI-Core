@@ -1,5 +1,13 @@
 # Installation, Betrieb und Upgrade
 
+Aktueller Stand 04.11.2026: Ein zusammengehöriges Pluginpaket enthält zusätzlich
+`client/manifest.json`, `client/client.js`, `client/ui.js`, `client/ui.css`.
+Diese Dateiliste wird vom vorhandenen signatur-/hashprüfenden Loader verarbeitet.
+Keinen Runtime-Unterordner `Runtime/` anlegen. Neue Buildausgaben tragen lokal
+`1.2.0-dev.20261104` und sind keine veröffentlichte Version/ZIP-Distribution.
+Legacy-ZIP-Namen und Clientkopierhinweise unten sind historische Angaben.
+Für den aktuellen Weg siehe [CLIENT_DEPLOYMENT.md](CLIENT_DEPLOYMENT.md).
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/INSTALLATION.md) · [English](i18n/en/docs/INSTALLATION.md) · [Русский](i18n/ru/docs/INSTALLATION.md)
 <!-- /plugin-doc-languages -->

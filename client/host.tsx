@@ -1,44 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { UiModel, readPreferences, emptyPreferences, createDismissGuard, type Preferences, type ElementPreference } from './model';
-import { POSITIONS, type MenuView, type MenuField, type Position } from '../shared/contracts';
-import { bundledTranslations, type Locale, type UiMessages } from '../shared/localization';
+import { POSITIONS, type Position } from '../shared/contracts';
+import { bundledTranslations, type Locale } from '../shared/localization';
 import { editorTranslations } from './editor-localization';
 import { elementPreference, hudElements, placeElements, shortLabel, type Size } from './layout';
 import { HudItem } from './hud';
+import { Menu } from './menu';
+import { frameworkTranslations } from './framework-localization';
 declare global { interface Window { skyrimPlatform?: any } }
 const send = (type: string, data?: unknown) => { try { window.skyrimPlatform?.sendMessage?.(type, data); } catch { /* Native bridge may be absent. */ } };
-function Menu({ view, model, changed, t }: { view: MenuView; model: UiModel; changed: () => void; t: UiMessages }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [values, setValues] = useState<Record<string, unknown>>(() => Object.fromEntries((view.state.fields ?? []).map(f => [f.id, f.value ?? (f.type === 'checkbox' ? false : f.type === 'number' ? (f.min ?? 0) : f.type === 'select' ? f.options![0].value : '')])));
-  const waiting = [...model.pending.values()].some(p => p.id === view.definition.id);
-  useEffect(() => { ref.current?.querySelector<HTMLElement>('input, select, button')?.focus(); }, []);
-  function field(f: MenuField) {
-    const shared = { id: `ui-field-${f.id}`, disabled: waiting, required: f.required, 'aria-label': f.label };
-    if (f.type === 'select') return <select {...shared} value={String(values[f.id])} onChange={e => setValues({ ...values, [f.id]: e.target.value })}>{f.options!.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
-    if (f.type === 'checkbox') return <input {...shared} type="checkbox" checked={values[f.id] === true} onChange={e => setValues({ ...values, [f.id]: e.target.checked })} />;
-    return <input {...shared} type={f.type} value={values[f.id] as any} maxLength={f.maxLength ?? 256} min={f.min} max={f.max}
-      onChange={e => setValues({ ...values, [f.id]: f.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value })} />;
-  }
-  return <div className={view.definition.modal === false ? 'ui-menu-panel' : 'ui-modal-shade'}>
-    <div className="ui-panel ui-menu" ref={ref} role="dialog" aria-modal={view.definition.modal !== false} aria-label={view.definition.title}
-      onKeyDown={event => {
-        if (event.key === 'Tab') {
-          const items = [...(ref.current?.querySelectorAll<HTMLElement>('input:not(:disabled), select:not(:disabled), button:not(:disabled)') ?? [])];
-          const first = items[0], last = items[items.length - 1];
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-        }
-      }}>
-      <h2>{view.definition.title}</h2>{view.state.text && <p>{view.state.text}</p>}
-      <form onSubmit={event => { event.preventDefault(); }}>
-        {(view.state.fields ?? []).map(f => <label className="ui-field" key={f.id} htmlFor={'ui-field-' + f.id}>{f.label}{field(f)}</label>)}
-        <div className="ui-actions">{view.state.actions.map(action => <button type="button" key={action.id} disabled={waiting} className={'tone-' + (action.tone ?? 'info')}
-          onClick={e => { if (e.currentTarget.form?.reportValidity() === false) return; model.action(view.definition.id, action.id, { values }); changed(); }}>{action.label}</button>)}
-          <button type="button" onClick={() => { model.dismiss(); changed(); }}>{t.close}</button></div>
-      </form>{waiting && <p role="status">{t.pending}</p>}
-    </div>
-  </div>;
-}
 function Host() {
   const modelRef = useRef<UiModel>(); if (!modelRef.current) modelRef.current = new UiModel(send);
   const model = modelRef.current;
@@ -105,7 +75,7 @@ function Host() {
       window.removeEventListener('skymp5-client:browserFocused', focused); window.removeEventListener('skymp5-client:browserUnfocused', unfocused);
       send('skympUi:focus', false); };
   }, [model]);
-  useEffect(() => { send('skympUi:focus', wantsFocus); }, [wantsFocus, model.frame?.sessionId]);
+  useEffect(() => { send('skympUi:focus', wantsFocus); }, [wantsFocus, model.frame?.sessionId, model.focused]);
   useEffect(() => {
     editingRef.current = false; setEditing(false); setLanguage(null);
     if (!preferenceKey) { setPreferences(emptyPreferences()); return; }
@@ -139,7 +109,7 @@ function Host() {
         selected={editing && selected === element.key} hidden={!!pref.hidden} t={et} onSelect={setSelected} onChange={updateElement} onMeasure={onMeasure} />;
     })}
     <div className="ui-notifications" role="log" aria-live="polite">{model.frame.notifications.filter(n => n.expiresAt > model.serverNow()).slice(-4).map(n => <div key={n.id} className={'ui-panel ui-notice tone-' + n.tone}><strong>{t[n.tone]}</strong> {n.message}</div>)}</div>
-    {!editing && top && <Menu key={top.definition.id + ':' + top.expiresAt} view={top} model={model} changed={changed} t={t} />}
+    {!editing && top && <Menu key={top.definition.id + ':' + (top.revision ?? top.expiresAt)} view={top} model={model} changed={changed} t={t} ft={frameworkTranslations[effectiveLanguage]} />}
     {model.focused && !editing && <button className="ui-display-button" type="button" onClick={openEditor}>{t.display}</button>}
     {editing && <aside className="ui-panel ui-editor-panel" role="dialog" aria-modal="false" aria-label={et.edit}>
       <span className="ui-editor-eyebrow">SKYMP · HUD</span><h2>{et.edit}</h2><p className="ui-editor-hint">{et.hint}</p><div className="ui-editor-scroll">

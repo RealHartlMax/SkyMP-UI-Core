@@ -1,10 +1,31 @@
 # AGENTS.md — SkyMP UI Core
 
-## Aktuelle Nutzervorgabe vom 29.10.2026: Plugin Runtime Loader
+## Aktuelle Nutzervorgabe vom 04.11.2026: Universelles Plugin-UI-Framework
 
-Die neueste ausdrückliche Nutzervorgabe ersetzt die ältere feste Client-/CEF-Integration: Plugin-eigene native JS-Module und UI/CSS/Assets gehören als Quellcode in dieses Plugin-Repository und werden später als signiertes `client/manifest.json`-Paket ausgeliefert. Nur der generische Bootstrap bleibt in `D:/GitHub/skymp`, der generische Download-/Prüf-/Restorepfad in `D:/GitHub/skymp-client-launcher`. Keine Plugin-Templates mehr in die gemeinsame Runtime kopieren. UI-Core-Consumer bleiben reine Daten-/Server-Plugins. Siehe [docs/PLUGIN_RUNTIME.md](docs/PLUGIN_RUNTIME.md). Der aktuelle Auftrag verbietet Builds, ZIPs, Commit und Push; dafür ist später eine separate Nutzervorgabe erforderlich.
+Die bestehende Architektur gezielt erweitern. HUD, `/UiEdit`, Notifications,
+Menüs und API V1 erhalten. Neue Komponenten liegen in diesem eigenständigen
+Plugin-Repository und werden über die optionale Framework-Erweiterung V1
+ausgehandelt. Daten-/Server-Consumer benötigen keinen eigenen Clientcode.
+Keine Gameplay-Regeln, zusätzliche Charakterdatenbank oder zweite CEF-Anwendung.
 
-> Arbeitsauftrag für Coding-Agenten. Dieses Dokument gehört in die Wurzel eines **eigenständigen** Repositories für das Plugin `skymp-ui-core`. Es beschreibt zu implementierende Verträge, nicht bereits vorhandene Funktionen.
+Vor Änderungen `git status`, lokale Contracts, Runtime, Host und Dokumentation
+prüfen; vorhandene Änderungen erhalten. Andere Repositories ausschließlich lesen.
+Erforderliche Integrationen als isolierte Vorschläge unter `docs/CORE_HOOKS.md`
+liefern. Keine Subagenten ohne ausdrücklichen Auftrag. Lokale Plugin-Builds,
+Typecheck und Tests sind jetzt ausdrücklich erlaubt. Keine ZIPs, Commits, Pushes,
+Tags, Veröffentlichungen, Deployments oder Builds fremder Repositories.
+
+Maßgebliche aktuelle Quellen: [Audit](docs/FRAMEWORK_AUDIT.md),
+[API](docs/API.md), [Framework-Vertrag](docs/FRAMEWORK.md),
+[Runtime](docs/PLUGIN_RUNTIME.md). Native Bots, Test-Callbacks und Browserläufe
+beweisen keine echte Skyrim-/CEF-/Audio-Abnahme. Entwicklungsstände nicht unter
+einer bereits ausgelieferten unveränderlichen Runtime-Version veröffentlichen.
+
+## Bestehende Vorgabe: Plugin Runtime Loader
+
+Plugin-eigene native JS-Module und UI/CSS/Assets gehören als Quellcode in dieses Plugin-Repository. Der am 04.11.2026 tatsächlich geprüfte lokale Fork akzeptiert `runtime: "client/manifest.json"` und weist `Runtime/manifest.json` ab. Nur der generische Bootstrap bleibt in `D:/GitHub/skymp`, der generische Download-/Prüf-/Restorepfad in `D:/GitHub/skymp-client-launcher`. Keine Plugin-Templates mehr in die gemeinsame Runtime kopieren. UI-Core-Consumer bleiben reine Daten-/Server-Plugins. Ed25519-/Hash-/Versionsprüfungen beibehalten; keine Herausgeberschlüssel erzeugen außer temporären Test-Fixtures. Siehe [docs/PLUGIN_RUNTIME.md](docs/PLUGIN_RUNTIME.md).
+
+> Die folgenden ursprünglichen Planungsabschnitte bleiben als fachliche Anforderungen erhalten. Verifizierter Istzustand und neuere Vorgaben oben haben Vorrang vor älteren Integrations-/Kopieranweisungen. Keine Neuimplementierung bereits vorhandener Funktionen.
 
 ## 0. Mission und Abgrenzung
 

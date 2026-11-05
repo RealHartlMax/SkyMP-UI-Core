@@ -25,4 +25,4 @@ const runtime = createUiCore(globals.mp, { config, locales, chatGlobals: globals
 Object.defineProperty(globalThis, 'skympUi', { value: runtime.api, writable: false, configurable: false, enumerable: false });
 Object.defineProperty(globalThis, runtimeKey, { value: runtime, writable: false, configurable: false });
 process.once('exit', () => runtime.stop());
-console.info('[skymp-ui-core] Ready: API v1, frontend protocol v1; signed plugin Runtime requires shared client/UI API 1');
+console.info('[skymp-ui-core] Ready: API v1, frontend protocol v1, framework v1; plugin Runtime requires shared client/UI API 1');

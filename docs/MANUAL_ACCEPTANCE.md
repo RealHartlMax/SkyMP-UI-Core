@@ -1,5 +1,25 @@
 # Manuelle Zweiclient-Abnahme (offen)
 
+## Zusätzliche Framework-Abnahme ab 04.11.2026
+
+Auch diese Punkte sind offen; automatische Belege stehen in
+[FRAMEWORK_REPORT.md](FRAMEWORK_REPORT.md).
+
+- [ ] Zusammengehöriges signiertes beziehungsweise zur Herausgeberpolicy passendes Plugin-Runtime-Paket installieren; beide Clients über den Launcher vorbereiten.
+- [ ] Zwei Plugins registrieren Panels mit Reitern/Listen/Tabellen/Gegenständen; höchste modale Priorität wird allein bedienbar.
+- [ ] Alte API-V1-Consumer funktionieren unverändert; alter Client bekommt keine unbekannten Paneldaten, neue Clients erhalten nach dem Capability-Upgrade den aktuellen Snapshot.
+- [ ] Auswahl, Pflichtfelder, gesperrte Zeilen, falsche Revision und gefälschte Identitäten erreichen keinen unautorisierten Handler.
+- [ ] Gleichzeitiges Schließen, Deregistrieren, Frontendreload und Mehrfachklicks erzeugen keine doppelte Aktion.
+- [ ] Gemeinsames Interaktionsmenü kombiniert zwei Owner; das authentifizierte Serverziel bleibt bei Zielwechsel und verspäteten Antworten korrekt.
+- [ ] Im Gameplay-Router Entfernung, Zellen, aktuelle Besitz-/Schloss-/Handelsregeln und zwischenzeitlich geänderten Zustand erneut prüfen.
+- [ ] Skyrim-Menüs einschließlich Charaktererstellung, Inventar, Dialog und Laden setzen Plugin-Interaktion aus; Chat/F2/F6/Escape bleiben nutzbar.
+- [ ] Reiter mit Links/Rechts/Home/End und Dialog mit Tab/Shift+Tab bedienen; 75/100/150 % und mehrere Auflösungen prüfen.
+- [ ] Metabolism einschließlich optionaler Survival-Werte und YACA-Reichweite behalten ihre HUD-Positionen und Funktion.
+- [ ] Disconnect und vom Launcher vorbereiteter Serverwechsel entfernen Panels, Interaktionsangebote und private Daten; kein hängender Fokus.
+- [ ] Manipulierte Runtimebytes, falsche APIs, nicht vertrauenswürdige Signatur und veränderte schon bekannte Pluginversion werden vor Spielstart abgewiesen.
+
+## Bisherige Basisabnahme
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/MANUAL_ACCEPTANCE.md) · [English](i18n/en/docs/MANUAL_ACCEPTANCE.md) · [Русский](i18n/ru/docs/MANUAL_ACCEPTANCE.md)
 <!-- /plugin-doc-languages -->

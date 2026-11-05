@@ -16,7 +16,8 @@ export interface UiWidgetDefinition {
 }
 export interface UiMenuDefinition {
   id: UiId; owner: UiOwner; title: string; schemaVersion: number;
-  layoutId: 'core:dialog-v1' | 'core:form-v1'; modal?: boolean;
+  layoutId: 'core:dialog-v1' | 'core:form-v1' | 'core:panel-v1'; modal?: boolean;
+  priority?: number;
 }
 export interface UiActionContext {
   readonly userId: number; readonly actorId: number | null; readonly widgetId: string;
@@ -29,6 +30,8 @@ export interface ActionOptions {
 }
 export interface SkyMpUiApiV1 {
   readonly apiVersion: 1;
+  // Optional discovery keeps consumers compatible with older API V1 services.
+  readonly framework?: SkyMpUiFrameworkV1;
   registerWidget(def: UiWidgetDefinition): void;
   unregisterWidget(owner: UiOwner, id: UiId): void;
   updateWidget(target: UiTarget, widgetId: UiId, state: unknown): void;
@@ -53,9 +56,44 @@ export interface MenuField {
 export interface MenuState {
   schemaVersion: 1; text?: string; fields?: MenuField[];
   actions: Array<{ id: string; label: string; tone?: Tone }>;
+  content?: UiPanelContent;
+}
+export interface UiListItem { id: string; label: string; detail?: string; value?: string | number; disabled?: boolean }
+export interface UiInventoryItem extends UiListItem { quantity?: number }
+interface SelectableBlock { id: string; label: string; selectable?: boolean; required?: boolean }
+export type UiContentBlock =
+  | { id: string; kind: 'text'; text: string; label?: string; tone?: Tone }
+  | { id: string; kind: 'progress'; label: string; value: number; max: number }
+  | (SelectableBlock & { kind: 'list'; items: UiListItem[] })
+  | (SelectableBlock & { kind: 'item-list'; items: UiInventoryItem[] })
+  | (SelectableBlock & { kind: 'table'; columns: Array<{ id: string; label: string }>; rows: Array<{ id: string; cells: Array<string | number>; disabled?: boolean }> });
+export interface UiPanelContent {
+  version: 1;
+  blocks: UiContentBlock[];
+  tabs?: Array<{ id: string; label: string; blocks: UiContentBlock[] }>;
+}
+export const INTERACTION_KINDS = ['npc', 'player', 'door', 'container', 'furniture', 'gathering', 'merchant'] as const;
+export type InteractionKind = typeof INTERACTION_KINDS[number];
+// Supplied by a server router. It is never accepted as client action payload.
+export interface UiInteractionTarget { kind: InteractionKind; referenceId: string; title: string }
+export interface UiInteractionDefinition { id: UiId; owner: UiOwner; schemaVersion: 1; label: string; kinds: InteractionKind[]; priority?: number }
+export interface UiInteractionActionContext extends UiActionContext { readonly interaction: Readonly<UiInteractionTarget> }
+export interface SkyMpUiFrameworkV1 {
+  readonly version: 1;
+  clientStatus(target: UiTarget): { ready: boolean; frameworkVersion: 0 | 1 };
+  unregisterOwner(owner: UiOwner): void;
+  offAction(owner: UiOwner, componentId: UiId, actionId: string): void;
+  registerInteraction(def: UiInteractionDefinition, handler: (ctx: UiInteractionActionContext) => void | Promise<void>,
+    options?: { authorize: (ctx: UiInteractionActionContext) => boolean }): void;
+  unregisterInteraction(owner: UiOwner, id: UiId): void;
+  listInteractions(kind: InteractionKind): UiInteractionDefinition[];
+  // Omit actionIds to offer all matching registrations. Gameplay routers should
+  // pass their own available set; authorization is still checked on every click.
+  openInteraction(target: UiTarget, interaction: UiInteractionTarget, actionIds?: UiId[]): boolean;
+  closeInteraction(target: UiTarget): void;
 }
 export interface WidgetView { definition: UiWidgetDefinition; state: TextState | ProgressState | ListState; visible: boolean; expiresAt: number }
-export interface MenuView { definition: UiMenuDefinition; state: MenuState; expiresAt: number }
+export interface MenuView { definition: UiMenuDefinition; state: MenuState; expiresAt: number; revision?: number }
 export interface NotificationView { id: string; message: string; tone: Tone; expiresAt: number }
 export interface Frame {
   customPacketType: 'skympUi:snapshot' | 'skympUi:update'; protocolVersion: 1; apiVersion: 1;
@@ -91,7 +129,7 @@ export function owned(owner: unknown, id: unknown) {
 export function serialized(value: unknown, maxBytes = 8192): string {
   let nodes = 0;
   const visit = (v: any, depth: number) => {
-    check(++nodes <= 4096 && depth <= 10, 'JSON complexity limit');
+    check(++nodes <= 4096 && depth <= 16, 'JSON complexity limit');
     if (v === null || typeof v === 'boolean') return;
     if (typeof v === 'string') { text(v, 4096); return; }
     if (typeof v === 'number') { finite(v); return; }
@@ -123,10 +161,11 @@ export function widgetDefinition(input: unknown): UiWidgetDefinition {
   return d as UiWidgetDefinition;
 }
 export function menuDefinition(input: unknown): UiMenuDefinition {
-  const d = clone(input); object(d); keys(d, ['id', 'owner', 'title', 'schemaVersion', 'layoutId', 'modal']);
+  const d = clone(input); object(d); keys(d, ['id', 'owner', 'title', 'schemaVersion', 'layoutId', 'modal', 'priority']);
   owned(d.owner, d.id); text(d.title, 120); check(d.title.trim() && d.schemaVersion === 1, 'Invalid title/schemaVersion');
-  choice(d.layoutId, ['core:dialog-v1', 'core:form-v1']);
+  choice(d.layoutId, ['core:dialog-v1', 'core:form-v1', 'core:panel-v1']);
   if (d.modal !== undefined) check(typeof d.modal === 'boolean', 'Invalid modal');
+  priority(d.priority);
   return d as UiMenuDefinition;
 }
 export function widgetState(d: UiWidgetDefinition, value: unknown, maxBytes = 8192): WidgetView['state'] {
@@ -150,9 +189,11 @@ export function widgetState(d: UiWidgetDefinition, value: unknown, maxBytes = 81
 }
 function scalar(v: unknown) { if (v !== undefined) { if (typeof v === 'number') finite(v); else text(v, 160); } }
 export function menuState(d: UiMenuDefinition, value: unknown, maxBytes = 8192): MenuState {
-  const s = clone(value, maxBytes); object(s); keys(s, ['schemaVersion', 'text', 'fields', 'actions']);
+  const s = clone(value, maxBytes); object(s); keys(s, ['schemaVersion', 'text', 'fields', 'actions', 'content']);
   check(s.schemaVersion === d.schemaVersion, 'State schema mismatch'); if (s.text !== undefined) text(s.text, 2048);
-  check(Array.isArray(s.actions) && s.actions.length > 0 && s.actions.length <= 8, 'Invalid menu actions');
+  if (d.layoutId === 'core:panel-v1') panelContent(s.content);
+  else check(s.content === undefined, 'Content requires core:panel-v1');
+  check(Array.isArray(s.actions) && (s.actions.length > 0 || d.layoutId === 'core:panel-v1') && s.actions.length <= 8, 'Invalid menu actions');
   const actionIds = new Set();
   for (const action of s.actions) {
     object(action); keys(action, ['id', 'label', 'tone']); text(action.label, 80);
@@ -160,7 +201,7 @@ export function menuState(d: UiMenuDefinition, value: unknown, maxBytes = 8192):
     actionIds.add(action.id); if (action.tone !== undefined) choice(action.tone, TONES);
   }
   if (s.fields !== undefined) {
-    check(d.layoutId === 'core:form-v1' && Array.isArray(s.fields) && s.fields.length <= 12, 'Invalid form fields');
+    check(d.layoutId !== 'core:dialog-v1' && Array.isArray(s.fields) && s.fields.length <= 12, 'Invalid form fields');
     const ids = new Set();
     for (const f of s.fields) {
       object(f); keys(f, ['id', 'label', 'type', 'required', 'maxLength', 'min', 'max', 'options', 'value']);
@@ -187,12 +228,103 @@ function fieldValue(field: MenuField, value: unknown) {
   if (field.type === 'checkbox') { check(typeof value === 'boolean' && (!field.required || value), 'Invalid checkbox'); }
   if (field.type === 'select') check(field.options?.some(o => o.value === value), 'Invalid selection');
 }
-export function actionPayload(state: MenuState, value: unknown) {
-  const data = clone(value, 4096); object(data); keys(data, ['values']);
-  if (!state.fields?.length) { check(data.values === undefined || Object.keys(data.values).length === 0, 'Unexpected values'); return data; }
-  object(data.values); keys(data.values, state.fields.map(f => f.id));
-  for (const field of state.fields) { check(data.values[field.id] !== undefined || !field.required, 'Missing field'); if (data.values[field.id] !== undefined) fieldValue(field, data.values[field.id]); }
+export function actionPayload(state: MenuState, value: unknown, revision?: number) {
+  const data = clone(value, 4096); object(data); keys(data, state.content ? ['values', 'selections', 'revision'] : ['values']);
+  if (state.content) {
+    check(Number.isSafeInteger(revision) && data.revision === revision, 'Stale panel revision');
+    const blocks = contentBlocks(state.content).filter(b => 'selectable' in b && b.selectable);
+    if (data.selections === undefined) data.selections = {};
+    object(data.selections); keys(data.selections, blocks.map(b => b.id));
+    for (const block of blocks) {
+      const selected = data.selections[block.id];
+      check(selected !== undefined || !('required' in block && block.required), 'Missing selection');
+      if (selected !== undefined) {
+        const rows = block.kind === 'table' ? block.rows : block.kind === 'list' || block.kind === 'item-list' ? block.items : [];
+        check(typeof selected === 'string' && rows.some(row => row.id === selected && !row.disabled), 'Invalid selection');
+      }
+    }
+  }
+  if (data.values !== undefined) object(data.values);
+  if (!state.fields?.length) check(data.values === undefined || Object.keys(data.values).length === 0, 'Unexpected values');
+  else {
+    if (data.values === undefined) data.values = {};
+    keys(data.values, state.fields.map(f => f.id));
+    for (const field of state.fields) { check(data.values[field.id] !== undefined || !field.required, 'Missing field'); if (data.values[field.id] !== undefined) fieldValue(field, data.values[field.id]); }
+  }
   return data;
+}
+function localId(value: unknown) {
+  check(typeof value === 'string' && ACTION_RE.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value), 'Invalid local id');
+}
+function priority(value: unknown) { if (value !== undefined) check(Number.isInteger(value) && (value as number) >= -100 && (value as number) <= 100, 'Invalid priority'); }
+export function contentBlocks(content: UiPanelContent): UiContentBlock[] { return [...content.blocks, ...(content.tabs ?? []).flatMap(tab => tab.blocks)]; }
+function panelContent(value: unknown) {
+  object(value); keys(value, ['version', 'blocks', 'tabs']);
+  check(value.version === 1 && Array.isArray(value.blocks), 'Invalid panel content version/blocks');
+  if (value.tabs !== undefined) {
+    check(Array.isArray(value.tabs) && value.tabs.length > 0 && value.tabs.length <= 6, 'Invalid tabs');
+    const ids = new Set();
+    for (const tab of value.tabs) {
+      object(tab); keys(tab, ['id', 'label', 'blocks']); localId(tab.id); text(tab.label, 80);
+      check(!ids.has(tab.id) && Array.isArray(tab.blocks), 'Invalid/duplicate tab'); ids.add(tab.id);
+    }
+  }
+  const blocks = contentBlocks(value as UiPanelContent), ids = new Set();
+  check(blocks.length <= 12, 'Panel block limit');
+  let rows = 0;
+  for (const b of blocks) {
+    object(b); localId(b.id); check(!ids.has(b.id), 'Duplicate block'); ids.add(b.id);
+    if (b.kind === 'text') {
+      keys(b, ['id', 'kind', 'label', 'text', 'tone']); text(b.text, 2048);
+      if (b.label !== undefined) text(b.label, 160); if (b.tone !== undefined) choice(b.tone, TONES);
+      continue;
+    }
+    text(b.label, 160);
+    if (b.kind === 'progress') {
+      keys(b, ['id', 'kind', 'label', 'value', 'max']); finite(b.value); finite(b.max);
+      check(b.max > 0 && b.value >= 0 && b.value <= b.max, 'Invalid progress range'); continue;
+    }
+    choice(b.kind, ['list', 'item-list', 'table']);
+    keys(b, ['id', 'kind', 'label', 'selectable', 'required', ...(b.kind === 'table' ? ['columns', 'rows'] : ['items'])]);
+    if (b.selectable !== undefined) check(typeof b.selectable === 'boolean', 'Invalid selectable');
+    if (b.required !== undefined) check(typeof b.required === 'boolean' && (!b.required || b.selectable === true), 'Required selection must be selectable');
+    if (b.kind === 'table') {
+      check(Array.isArray(b.columns) && b.columns.length > 0 && b.columns.length <= 8, 'Invalid columns');
+      const columns = new Set();
+      for (const column of b.columns) { object(column); keys(column, ['id', 'label']); localId(column.id); text(column.label, 120); check(!columns.has(column.id), 'Duplicate column'); columns.add(column.id); }
+    }
+    const items: unknown = b.kind === 'table' ? b.rows : (b as Extract<UiContentBlock, {kind: 'list' | 'item-list'}>).items;
+    check(Array.isArray(items) && items.length <= 32 && (rows += items.length) <= 128, 'Panel row limit');
+    const itemIds = new Set();
+    for (const item of items) {
+      object(item); localId(item.id); check(!itemIds.has(item.id), 'Duplicate row'); itemIds.add(item.id);
+      if (item.disabled !== undefined) check(typeof item.disabled === 'boolean', 'Invalid disabled');
+      if (b.kind === 'table') {
+        keys(item, ['id', 'cells', 'disabled']); check(Array.isArray(item.cells) && item.cells.length === b.columns.length, 'Invalid cells');
+        for (const cell of item.cells) { check(cell !== undefined, 'Missing cell'); scalar(cell); }
+      } else {
+        keys(item, ['id', 'label', 'detail', 'value', 'disabled', ...(b.kind === 'item-list' ? ['quantity'] : [])]);
+        text(item.label, 160); if (item.detail !== undefined) text(item.detail, 512); scalar(item.value);
+        if (item.quantity !== undefined) check(Number.isSafeInteger(item.quantity) && item.quantity >= 0 && item.quantity <= 1e9, 'Invalid quantity');
+      }
+    }
+  }
+}
+export function interactionDefinition(input: unknown): UiInteractionDefinition {
+  const d = clone(input); object(d); keys(d, ['id', 'owner', 'schemaVersion', 'label', 'kinds', 'priority']);
+  owned(d.owner, d.id); text(d.label, 80); priority(d.priority);
+  check(d.schemaVersion === 1 && d.label.trim() && Array.isArray(d.kinds) && d.kinds.length > 0 && d.kinds.length <= INTERACTION_KINDS.length && new Set(d.kinds).size === d.kinds.length, 'Invalid interaction');
+  for (const kind of d.kinds) choice(kind, INTERACTION_KINDS);
+  return d as UiInteractionDefinition;
+}
+export function interactionTarget(input: unknown): UiInteractionTarget {
+  const d = clone(input); object(d); keys(d, ['kind', 'referenceId', 'title']); choice(d.kind, INTERACTION_KINDS);
+  text(d.referenceId, 96); text(d.title, 120); check(d.referenceId.trim() && d.title.trim(), 'Empty interaction target');
+  return d as UiInteractionTarget;
+}
+// Stable insertion order breaks equal-priority ties; modal menus outrank nonmodals.
+export function orderMenus(menus: MenuView[]): MenuView[] {
+  return [...menus].sort((a, b) => Number(a.definition.modal !== false) - Number(b.definition.modal !== false) || (a.definition.priority ?? 0) - (b.definition.priority ?? 0));
 }
 export function validateFrame(value: unknown): Frame {
   const p = clone(value, 65536); object(p);
@@ -210,7 +342,9 @@ export function validateFrame(value: unknown): Frame {
     check(!ids.has(w.definition.id) && typeof w.visible === 'boolean' && Number.isSafeInteger(w.expiresAt), 'Invalid widget view'); ids.add(w.definition.id);
   }
   for (const m of p.menus) {
-    object(m); keys(m, ['definition', 'state', 'expiresAt']); m.definition = menuDefinition(m.definition); m.state = menuState(m.definition, m.state);
+    object(m); keys(m, ['definition', 'state', 'expiresAt', 'revision']); m.definition = menuDefinition(m.definition); m.state = menuState(m.definition, m.state);
+    if (m.definition.layoutId === 'core:panel-v1') check(Number.isSafeInteger(m.revision) && m.revision > 0, 'Invalid panel revision');
+    else check(m.revision === undefined, 'Revision requires panel layout');
     check(!ids.has(m.definition.id) && Number.isSafeInteger(m.expiresAt), 'Invalid menu view'); ids.add(m.definition.id);
   }
   const notices = new Set();

@@ -1,5 +1,12 @@
 # Öffentliche Server-API v1
 
+Stand 04.11.2026: API V1 bleibt erhalten. Die optionale
+[`framework`-Erweiterung V1](FRAMEWORK.md) ergänzt Panels, Reiter, Listen, Tabellen,
+Gegenstandslisten, serverseitige Interaktionen, Owner-Cleanup und Action-Abmeldung.
+Typen und Validatoren bleiben in `shared/contracts.ts`. Alte Consumer funktionieren
+ohne Änderung; neue Consumer prüfen zusätzlich die Clientfähigkeit. Eine API V2
+ist für diese additive Erweiterung nicht nötig.
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/API.md) · [English](i18n/en/docs/API.md) · [Русский](i18n/ru/docs/API.md)
 <!-- /plugin-doc-languages -->
@@ -66,7 +73,7 @@ nur `value`; `label` und `text` sind Tooltip-/Screenreader-Text. Ein `value` als
 vollständiger Bruch „aktuell/max“, optional mit Einheit („85,3/100 · Gut“,
 „8/40 m“), füllt den Ring um das Siegel anteilig; `max` ist der volle Ring.
 
-Menüs: `{owner,id,title,schemaVersion,layoutId,modal?}`. Layouts:
+Menüs: `{owner,id,title,schemaVersion,layoutId,modal?,priority?}`. Bisherige Layouts:
 `core:dialog-v1` (Text und Buttons), `core:form-v1` (zusätzlich Formularfelder).
 Zustand: `{schemaVersion:1,text?,actions:[{id,label,tone?}],fields?}`.
 Bis 8 Actions und 12 Felder. Felder enthalten `id,label,type`, optionale
@@ -74,6 +81,14 @@ Bis 8 Actions und 12 Felder. Felder enthalten `id,label,type`, optionale
 `options:[{value,label}]` mit bis 24 Einträgen. Typen: text/number/checkbox/select.
 UI Core prüft die übermittelten Werte gegen genau den serverseitig geöffneten
 Zustand. Domainregeln wie Preis, Inventarmenge oder Berechtigung prüft das Plugin.
+
+`core:panel-v1` ergänzt sichere Inhaltsblöcke und Reiter mit eigener ausgehandelter
+Fähigkeit. Es verwendet zusätzlich sitzungsbezogene Revisionen und validierte
+Zeilenauswahlen. [Vollständiges Schema, Limits und Beispiele](FRAMEWORK.md).
+Modale Menüs haben Vorrang vor nichtmodalen; anschließend entscheidet die höhere
+`priority` (-100 bis 100, Standard 0), bei Gleichstand die Öffnungsreihenfolge.
+Nur das oberste Menü akzeptiert Aktionen. `config.maxMenus` begrenzt alle offenen
+Menüs einschließlich des gemeinsamen Interaktionsmenüs auf höchstens vier.
 
 ## Actions und Freigaben
 

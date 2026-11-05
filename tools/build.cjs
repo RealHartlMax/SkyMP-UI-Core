@@ -37,8 +37,18 @@ async function main() {
   fs.cpSync(path.join(root, 'docs'), path.join(root, 'release/SkyMPUICore/docs'), { recursive: true });
   fs.cpSync(path.join(root, 'dist/types'), path.join(root, 'release/SkyMPUICore/types'), { recursive: true });
   fs.mkdirSync(path.join(root, 'release/SkyMPUICore/docs/examples'), { recursive: true });
-  fs.copyFileSync(path.join(root, 'examples/ExampleUiConsumer/index.ts'), path.join(root, 'release/SkyMPUICore/docs/examples/ExampleUiConsumer.ts'));
-  fs.writeFileSync(path.join(root, 'release/SkyMPUICore/README.md'), fs.readFileSync(path.join(root, 'README.md'), 'utf8').replace('(examples/ExampleUiConsumer/index.ts)', '(docs/examples/ExampleUiConsumer.ts)'));
+  for (const name of ['ExampleUiConsumer', 'FrameworkConsumer']) {
+    const example = fs.readFileSync(path.join(root, `examples/${name}/index.ts`), 'utf8')
+      .replace("from '../../shared/contracts'", "from '../../types/shared/contracts'");
+    fs.writeFileSync(path.join(root, `release/SkyMPUICore/docs/examples/${name}.ts`), example);
+  }
+  for (const name of ['FRAMEWORK.md', 'FRAMEWORK_REPORT.md']) {
+    const filename = path.join(root, 'release/SkyMPUICore/docs', name);
+    fs.writeFileSync(filename, fs.readFileSync(filename, 'utf8').replaceAll('../examples/FrameworkConsumer/index.ts', 'examples/FrameworkConsumer.ts'));
+  }
+  let readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  for (const name of ['ExampleUiConsumer', 'FrameworkConsumer']) readme = readme.replace(`(examples/${name}/index.ts)`, `(docs/examples/${name}.ts)`);
+  fs.writeFileSync(path.join(root, 'release/SkyMPUICore/README.md'), readme);
   if (fs.existsSync(path.join(root, 'LICENSE'))) fs.copyFileSync(path.join(root, 'LICENSE'), path.join(root, 'release/SkyMPUICore/LICENSE'));
   console.log('Built standalone server, existing-CEF host, contract types and two independent consumers.');
 }

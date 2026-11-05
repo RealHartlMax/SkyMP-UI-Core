@@ -1,6 +1,6 @@
 {
   "name": "skymp-ui-core",
-  "version": "1.1.0",
+  "version": "1.2.0-dev.20261104",
   "private": true,
   "description": "Shared SkyMP in-game UI service and existing-CEF host",
   "license": "AGPL-3.0-only",

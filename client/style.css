@@ -13,7 +13,8 @@
 .skymp-ui-core .tone-error { color: #ffc3b9; }
 .skymp-ui-core .ui-modal-shade { pointer-events: auto; position: absolute; inset: 0; display: grid; place-items: center; background: #0005; }
 .skymp-ui-core .ui-menu-panel { pointer-events: auto; position: absolute; top: 15%; right: 24px; }
-.skymp-ui-core .ui-menu { pointer-events: auto; width: min(560px, 90vw); max-height: calc(85vh / var(--ui-scale)); overflow-y: auto; transform: scale(var(--ui-scale)); transform-origin: center; }
+.skymp-ui-core .ui-menu { pointer-events: auto; width: min(560px, calc(90vw / var(--ui-scale))); max-height: calc(85vh / var(--ui-scale)); overflow-y: auto; transform: scale(var(--ui-scale)); transform-origin: center; }
+.skymp-ui-core .ui-menu-panel .ui-menu { transform-origin: top right; }
 .skymp-ui-core .ui-field { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
 .skymp-ui-core button, .skymp-ui-core input, .skymp-ui-core select { font: inherit; color: #f4ead4; background: #1a2024; border: 1px solid #a99a70; border-radius: 2px; padding: 8px 12px; min-height: 38px; }
 .skymp-ui-core input[type=checkbox] { min-height: 20px; width: 20px; accent-color: #d6bd79; }
@@ -77,3 +78,21 @@
 .skymp-ui-core .ui-editor-panel { display: flex; flex-direction: column; overflow: hidden; }
 .skymp-ui-core .ui-editor-scroll { min-height: 0; overflow-y: auto; padding: 0 6px 0 0; }
 .skymp-ui-core .ui-editor-panel > .ui-actions { flex-shrink: 0; padding-top: 12px; border-top: 1px solid #8a7c5e66; }
+
+/* Declarative panels use the same host, focus policy and fantasy palette. */
+.skymp-ui-core .ui-content-block { margin: 16px 0; }
+.skymp-ui-core .ui-content-block h3 { margin: 8px 0; font-size: 18px; color: #e9d9a5; }
+.skymp-ui-core .ui-tabs { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #a99a7080; padding-bottom: 8px; margin: 16px 0; }
+.skymp-ui-core .ui-tabs [aria-selected=true] { background: #51482f; border-color: #ead79b; }
+.skymp-ui-core [role=tabpanel][hidden] { display: none; }
+.skymp-ui-core .ui-content-list > li { padding: 10px 0; border-bottom: 1px solid #a99a7040; }
+.skymp-ui-core .ui-content-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.skymp-ui-core .ui-content-row input, .skymp-ui-core table input { width: 20px; height: 20px; min-height: 20px; flex-shrink: 0; accent-color: #d6bd79; }
+.skymp-ui-core .ui-row-value { margin-left: auto; font-variant-numeric: tabular-nums; }
+.skymp-ui-core .ui-row-detail { color: #cbc5b7; font-size: 14px; }
+.skymp-ui-core .ui-item-quantity { color: #e0cd97; white-space: nowrap; }
+.skymp-ui-core .ui-table-scroll { max-width: 100%; overflow-x: auto; }
+.skymp-ui-core table { border-collapse: collapse; width: 100%; }
+.skymp-ui-core th, .skymp-ui-core td { text-align: left; border-bottom: 1px solid #a99a7050; padding: 8px; min-width: 60px; overflow-wrap: anywhere; }
+.skymp-ui-core th { color: #e9d9a5; }
+.skymp-ui-core .ui-row-selected { background: #a99a7020; }

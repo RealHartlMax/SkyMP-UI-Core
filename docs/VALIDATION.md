@@ -1,5 +1,11 @@
 # Prüfstand und verbleibende Abnahme
 
+Aktueller Stand **04.11.2026 / universelles UI-Framework**:
+[FRAMEWORK_REPORT.md](FRAMEWORK_REPORT.md). Lokale Plugin-Builds, Typecheck,
+erweiterte Unit-/Integrationsprüfungen und ein separater Renderer-Browserlauf
+wurden ausgeführt. Die nachfolgenden Zahlen betreffen ältere Arbeitsstände und
+sind keine Abnahme der neuen Panels im echten Skyrim-/CEF-Prozess.
+
 <!-- plugin-doc-languages -->
 [Deutsch](i18n/de/docs/VALIDATION.md) · [English](i18n/en/docs/VALIDATION.md) · [Русский](i18n/ru/docs/VALIDATION.md)
 <!-- /plugin-doc-languages -->
